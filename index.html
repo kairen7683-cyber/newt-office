@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEWT Web Office — Excel · Word · PPT 통합 웹 오피스</title>
+
+  <!-- Pretendard Font -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- 1. Luckysheet (Full Excel Clone) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/css/pluginsCss.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/plugins.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/css/luckysheet.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/assets/iconfont/iconfont.css" />
+  <script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/js/plugin.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/luckysheet.umd.js"></script>
+  <!-- SheetJS (xlsx import/export) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- 2. Word Tools: Mammoth (.docx reader) & Quill / HTML-to-DOCX / html2pdf -->
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+
+  <!-- 3. PPT Tools: PptxGenJS (.pptx generator) & JSZip (.pptx parser) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Top App Bar -->
+  <header class="top-header">
+    <div class="brand-area">
+      <div class="brand-logo" id="brandBadge">N</div>
+      <div class="brand-info">
+        <div class="brand-title-row">
+          <span class="app-suite-name">NEWT Web Office</span>
+          <input type="text" id="docTitleInput" class="doc-title-input" value="제목 없는 문서" title="파일명 편집" />
+          <span class="save-badge" id="autoSaveBadge">자동 저장됨</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- App Switcher Tabs (Excel / Word / PPT) -->
+    <nav class="suite-tabs">
+      <button class="suite-tab active" data-mode="excel" onclick="switchOfficeMode('excel')">
+        <span class="tab-dot excel-dot">X</span>
+        <span>엑셀 (Excel)</span>
+      </button>
+      <button class="suite-tab" data-mode="word" onclick="switchOfficeMode('word')">
+        <span class="tab-dot word-dot">W</span>
+        <span>워드 (Word)</span>
+      </button>
+      <button class="suite-tab" data-mode="ppt" onclick="switchOfficeMode('ppt')">
+        <span class="tab-dot ppt-dot">P</span>
+        <span>파워포인트 (PPT)</span>
+      </button>
+    </nav>
+
+    <!-- Global Action Buttons -->
+    <div class="top-actions">
+      <label class="action-btn outline-btn" for="globalFileInput" title="내 PC의 파일 열기 (.xlsx, .csv, .docx, .txt, .html, .pptx, .json)">
+        <i data-lucide="folder-open"></i>
+        <span>파일 열기</span>
+      </label>
+      <input type="file" id="globalFileInput" hidden accept=".xlsx,.xls,.csv,.docx,.doc,.html,.txt,.pptx,.json" />
+
+      <button class="action-btn outline-btn" onclick="createNewDocument()" title="새 문서 만들기">
+        <i data-lucide="file-plus"></i>
+        <span>새로 만들기</span>
+      </button>
+
+      <button class="action-btn primary-btn" id="primaryDownloadBtn" onclick="downloadCurrentDocument()">
+        <i data-lucide="download"></i>
+        <span id="downloadBtnLabel">.xlsx 다운로드</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace Container -->
+  <main class="workspace-container">
+
+    <!-- ==================== 1. EXCEL VIEW ==================== -->
+    <section id="view-excel" class="office-view active">
+      <div class="sub-toolbar excel-toolbar">
+        <div class="toolbar-group">
+          <span class="mode-pill excel-pill">Excel Spreadsheet</span>
+          <button class="tool-btn" onclick="loadExcelSample('budget')">📊 가계부/예산 샘플</button>
+          <button class="tool-btn" onclick="loadExcelSample('invoice')">🧾 거래명세서 샘플</button>
+          <button class="tool-btn" onclick="loadExcelSample('calc')">🧮 수식 계산표 샘플</button>
+        </div>
+        <div class="toolbar-group">
+          <button class="tool-btn" onclick="exportExcelCSV()">📄 CSV 저장</button>
+          <button class="tool-btn highlight-excel" onclick="exportExcelXLSX()">💾 엑셀(.xlsx) 다운로드</button>
+        </div>
+      </div>
+      <div id="luckysheet-container"></div>
+    </section>
+
+    <!-- ==================== 2. WORD VIEW ==================== -->
+    <section id="view-word" class="office-view">
+      <div class="sub-toolbar word-toolbar">
+        <div class="toolbar-group">
+          <span class="mode-pill word-pill">Word Processor</span>
+          <select id="wordFontFamily" class="tool-select" onchange="execWordCmd('fontName', this.value)">
+            <option value="Pretendard, sans-serif">프리텐다드 (Pretendard)</option>
+            <option value="'Malgun Gothic', sans-serif">맑은 고딕</option>
+            <option value="'Batang', serif">바탕체</option>
+            <option value="'Gulim', sans-serif">굴림체</option>
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="'Times New Roman', serif">Times New Roman</option>
+          </select>
+          <select id="wordFontSize" class="tool-select" onchange="applyWordFontSize(this.value)">
+            <option value="10pt">10 pt</option>
+            <option value="11pt" selected>11 pt</option>
+            <option value="12pt">12 pt</option>
+            <option value="14pt">14 pt</option>
+            <option value="16pt">16 pt</option>
+            <option value="18pt">18 pt</option>
+            <option value="24pt">24 pt</option>
+            <option value="32pt">32 pt</option>
+          </select>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group">
+          <button class="icon-tool-btn" onclick="execWordCmd('bold')" title="굵게 (Ctrl+B)"><b>B</b></button>
+          <button class="icon-tool-btn" onclick="execWordCmd('italic')" title="기울임 (Ctrl+I)"><i>I</i></button>
+          <button class="icon-tool-btn" onclick="execWordCmd('underline')" title="밑줄 (Ctrl+U)"><u>U</u></button>
+          <button class="icon-tool-btn" onclick="execWordCmd('strikeThrough')" title="취소선"><s>S</s></button>
+          <label class="color-picker-label" title="글자 색상">
+            <span>A</span>
+            <input type="color" value="#1e293b" onchange="execWordCmd('foreColor', this.value)" />
+          </label>
+          <label class="color-picker-label" title="형광펜 배경색">
+            <span>🖍️</span>
+            <input type="color" value="#fef08a" onchange="execWordCmd('hiliteColor', this.value)" />
+          </label>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group">
+          <button class="icon-tool-btn" onclick="execWordCmd('justifyLeft')" title="왼쪽 정렬">⬅</button>
+          <button class="icon-tool-btn" onclick="execWordCmd('justifyCenter')" title="가운데 정렬">↔</button>
+          <button class="icon-tool-btn" onclick="execWordCmd('justifyRight')" title="오른쪽 정렬">➡</button>
+          <button class="icon-tool-btn" onclick="execWordCmd('insertUnorderedList')" title="글머리 기호">• 목록</button>
+          <button class="icon-tool-btn" onclick="execWordCmd('insertOrderedList')" title="번호 매기기">1. 목록</button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group">
+          <button class="tool-btn" onclick="insertWordTable()">📅 표 삽입</button>
+          <button class="tool-btn" onclick="insertWordImage()">🖼️ 이미지</button>
+          <button class="tool-btn" onclick="insertWordHR()">➖ 구분선</button>
+          <select class="tool-select" onchange="if(this.value){loadWordTemplate(this.value); this.value='';}">
+            <option value="">📋 문서 양식 불러오기...</option>
+            <option value="report">업무 보고서 / 기획서</option>
+            <option value="minutes">회의록 양식</option>
+            <option value="contract">표준 합의서 / 품의서</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group" style="margin-left:auto;">
+          <button class="tool-btn" onclick="printWordDocument()">🖨️ 인쇄 / PDF</button>
+          <button class="tool-btn highlight-word" onclick="exportWordDoc()">💾 워드(.doc) 저장</button>
+        </div>
+      </div>
+
+      <div class="word-canvas-scroll">
+        <div class="word-status-strip">
+          <span id="wordCharCount">글자 수: 0자 (공백 제외 0자) · 단어: 0개</span>
+          <span>A4 표준 용지 규격 (210mm × 297mm)</span>
+        </div>
+        <div id="wordPageEditor" class="word-a4-page" contenteditable="true" spellcheck="false"></div>
+      </div>
+    </section>
+
+    <!-- ==================== 3. POWERPOINT VIEW ==================== -->
+    <section id="view-ppt" class="office-view">
+      <div class="sub-toolbar ppt-toolbar">
+        <div class="toolbar-group">
+          <span class="mode-pill ppt-pill">PowerPoint Studio</span>
+          <button class="tool-btn" onclick="addPptSlide()">➕ 슬라이드 추가</button>
+          <button class="tool-btn" onclick="duplicatePptSlide()">📋 슬라이드 복제</button>
+          <button class="tool-btn danger-hover" onclick="deletePptSlide()">🗑️ 슬라이드 삭제</button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group">
+          <button class="tool-btn" onclick="addPptElement('text')">🔤 텍스트 상자</button>
+          <button class="tool-btn" onclick="addPptElement('box')">⬛ 도형/카드</button>
+          <button class="tool-btn" onclick="addPptElement('table')">📊 표 추가</button>
+          <button class="tool-btn" onclick="triggerPptImageUpload()">🖼️ 이미지 삽입</button>
+          <input type="file" id="pptImgInput" hidden accept="image/*" onchange="handlePptImageFile(event)" />
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group">
+          <label class="tool-inline-label">배경 테마:</label>
+          <select id="pptBgThemeSelect" class="tool-select" onchange="changeSlideBackground(this.value)">
+            <option value="#ffffff">화이트 클린</option>
+            <option value="#0f172a">다크 네이비</option>
+            <option value="#f8fafc">소프트 그레이</option>
+            <option value="#eff6ff">스카이 블루</option>
+            <option value="#fef2f2">코랄 핑크</option>
+            <option value="#ecfdf5">민트 그린</option>
+          </select>
+          <select class="tool-select" onchange="if(this.value){loadPptTemplateDeck(this.value); this.value='';}">
+            <option value="">✨ PPT 템플릿 세트...</option>
+            <option value="pitch">사업계획서 / 제안서 (4장)</option>
+            <option value="weekly">주간 업무 보고 (3장)</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group" style="margin-left:auto;">
+          <button class="tool-btn" onclick="startSlideShow()">▶️ 전체화면 발표(F5)</button>
+          <button class="tool-btn highlight-ppt" onclick="exportPptxFile()">💾 파워포인트(.pptx) 저장</button>
+        </div>
+      </div>
+
+      <div class="ppt-workbench">
+        <!-- Left Slide Thumbnails -->
+        <aside class="ppt-sidebar" id="pptThumbnailList"></aside>
+
+        <!-- Center 16:9 Slide Stage -->
+        <div class="ppt-stage-wrapper" onclick="deselectPptElement(event)">
+          <div id="pptSlideStage" class="ppt-slide-stage"></div>
+        </div>
+
+        <!-- Right Inspector Panel -->
+        <aside class="ppt-inspector">
+          <h3 class="inspector-title">요소 스타일 편집</h3>
+          <div id="pptInspectorBody" class="inspector-body">
+            <p class="inspector-empty">슬라이드의 텍스트나 도형을 클릭하면 크기·색상·정렬을 조절할 수 있습니다. 더블클릭하면 텍스트를 바로 수정하고, 드래그하여 위치를 이동할 수 있습니다.</p>
+          </div>
+          <div class="speaker-notes-box">
+            <label>발표자 노트</label>
+            <textarea id="pptSpeakerNotes" placeholder="이 슬라이드의 발표자 메모를 입력하세요..." oninput="saveCurrentSpeakerNotes(this.value)"></textarea>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Fullscreen Presentation Modal -->
+  <div id="pptPresentationModal" class="presentation-modal hidden">
+    <div class="presentation-controls">
+      <button onclick="stepPresentation(-1)">◀ 이전</button>
+      <span id="presentationPageIndicator">1 / 1</span>
+      <button onclick="stepPresentation(1)">다음 ▶</button>
+      <button onclick="closeSlideShow()" class="close-pres-btn">✕ 종료 (ESC)</button>
+    </div>
+    <div id="presentationStageHost" class="presentation-stage-host"></div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="officeToast" class="office-toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
