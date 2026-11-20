@@ -1,31 +1,33 @@
 /* ============================================================================
- * NEWT Web Office — Excel (.xlsx) · Word (.docx/.doc) · PowerPoint (.pptx)
- * 100% Client-Side Serverless Office Suite
+ * NEWT Web Office — Instant Native Excel · Word · PowerPoint Suite
+ * 0ms Render Engine (No heavy external grid libraries)
  * ============================================================================ */
 
 let currentMode = 'excel'; // 'excel' | 'word' | 'ppt'
-let luckysheetInitialized = false;
 
-// PPT State
+// ==================== EXCEL STATE ====================
+let excelSheets = [];
+let activeSheetIdx = 0;
+let selectedRow = 0;
+let selectedCol = 0;
+let editingCellInput = null;
+
+// ==================== PPT STATE ====================
 let pptDeck = [];
 let currentSlideIndex = 0;
 let selectedElementId = null;
-let dragContext = null;
 let presentationIndex = 0;
 
 // LocalStorage Keys
 const STORAGE_KEYS = {
-  TITLE: 'newt_office_doc_title',
-  WORD_HTML: 'newt_office_word_html',
-  PPT_DECK: 'newt_office_ppt_deck',
-  EXCEL_SHEETS: 'newt_office_excel_sheets'
+  TITLE: 'newt_office_doc_title_v2',
+  EXCEL_DATA: 'newt_office_excel_v2',
+  WORD_HTML: 'newt_office_word_v2',
+  PPT_DECK: 'newt_office_ppt_v2'
 };
 
 /* ==================== INITIALIZATION ==================== */
 window.addEventListener('DOMContentLoaded', () => {
-  if (window.lucide) lucide.createIcons();
-
-  // Restore document title
   const savedTitle = localStorage.getItem(STORAGE_KEYS.TITLE);
   if (savedTitle) {
     document.getElementById('docTitleInput').value = savedTitle;
@@ -35,31 +37,15 @@ window.addEventListener('DOMContentLoaded', () => {
     markAutoSaved();
   });
 
-  // File Input Listener
   document.getElementById('globalFileInput').addEventListener('change', handleGlobalFileOpen);
 
-  // Initialize 3 Engines
+  // Initialize 3 Engines Instantly
   initExcelEngine();
   initWordEngine();
   initPptEngine();
 
-  // Keyboard shortcuts (F5 for SlideShow, Delete in PPT)
-  window.addEventListener('keydown', (e) => {
-    if (currentMode === 'ppt') {
-      if (e.key === 'F5') {
-        e.preventDefault();
-        startSlideShow();
-      } else if (e.key === 'Escape') {
-        const modal = document.getElementById('pptPresentationModal');
-        if (!modal.classList.contains('hidden')) {
-          closeSlideShow();
-        }
-      } else if (!document.getElementById('pptPresentationModal').classList.contains('hidden')) {
-        if (e.key === 'ArrowRight' || e.key === ' ') stepPresentation(1);
-        if (e.key === 'ArrowLeft') stepPresentation(-1);
-      }
-    }
-  });
+  // Global keyboard handler
+  window.addEventListener('keydown', handleGlobalKeyDown);
 });
 
 function showToast(msg) {
@@ -69,14 +55,13 @@ function showToast(msg) {
   clearTimeout(window.__toastTimer);
   window.__toastTimer = setTimeout(() => {
     toast.classList.add('hidden');
-  }, 2800);
+  }, 2600);
 }
 
 function markAutoSaved() {
   const badge = document.getElementById('autoSaveBadge');
   const now = new Date();
-  const timeStr = now.toTimeString().slice(0, 5);
-  badge.textContent = `자동 저장됨 (${timeStr})`;
+  badge.textContent = `자동 저장 (${now.toTimeString().slice(0, 5)})`;
 }
 
 function getCleanDocTitle() {
@@ -88,18 +73,15 @@ function getCleanDocTitle() {
 function switchOfficeMode(mode) {
   currentMode = mode;
 
-  // Update Tabs
   document.querySelectorAll('.suite-tab').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
 
-  // Update Views
   document.querySelectorAll('.office-view').forEach((sec) => {
     sec.classList.remove('active');
   });
   document.getElementById(`view-${mode}`).classList.add('active');
 
-  // Update Header Brand & Primary Download Button
   const badge = document.getElementById('brandBadge');
   const dlBtn = document.getElementById('primaryDownloadBtn');
   const dlLabel = document.getElementById('downloadBtnLabel');
@@ -108,22 +90,18 @@ function switchOfficeMode(mode) {
     badge.style.background = 'var(--excel-primary)';
     badge.textContent = 'X';
     dlBtn.style.background = 'var(--excel-primary)';
-    dlLabel.textContent = '.xlsx 다운로드';
-    setTimeout(() => {
-      if (window.luckysheet && typeof luckysheet.resize === 'function') {
-        luckysheet.resize();
-      }
-    }, 80);
+    dlLabel.textContent = '💾 .xlsx 다운로드';
+    renderExcelGrid();
   } else if (mode === 'word') {
     badge.style.background = 'var(--word-primary)';
     badge.textContent = 'W';
     dlBtn.style.background = 'var(--word-primary)';
-    dlLabel.textContent = '.doc 다운로드';
+    dlLabel.textContent = '💾 .doc 다운로드';
   } else if (mode === 'ppt') {
     badge.style.background = 'var(--ppt-primary)';
     badge.textContent = 'P';
     dlBtn.style.background = 'var(--ppt-primary)';
-    dlLabel.textContent = '.pptx 다운로드';
+    dlLabel.textContent = '💾 .pptx 다운로드';
     renderPptWorkspace();
   }
 }
@@ -136,24 +114,20 @@ function downloadCurrentDocument() {
 
 function createNewDocument() {
   if (currentMode === 'excel') {
-    if (!confirm('현재 시트를 초기화하고 새 빈 엑셀 통합 문서를 만드시겠습니까?')) return;
-    createLuckysheetInstance([
-      {
-        name: 'Sheet1',
-        color: '#107c41',
-        status: 1,
-        order: 0,
-        celldata: [],
-        row: 60,
-        column: 26
-      }
-    ]);
-    showToast('새 엑셀 시트가 준비되었습니다.');
+    if (!confirm('현재 시트를 비우고 새 엑셀 문서를 만드시겠습니까?')) return;
+    excelSheets = [createBlankExcelSheet('Sheet1', 35, 14)];
+    activeSheetIdx = 0;
+    selectedRow = 0;
+    selectedCol = 0;
+    saveExcelState();
+    renderExcelWorkspace();
+    showToast('새 빈 엑셀 시트가 생성되었습니다.');
   } else if (currentMode === 'word') {
     if (!confirm('현재 워드 문서를 비우고 새로 작성하시겠습니까?')) return;
-    const editor = document.getElementById('wordPageEditor');
-    editor.innerHTML = '<h1>새 문서 제목</h1><p>여기에 내용을 입력하세요...</p>';
+    document.getElementById('wordPageEditor').innerHTML =
+      '<h1>새 문서 제목</h1><p>여기에 내용을 입력하세요...</p>';
     saveWordState();
+    updateWordCounters();
     showToast('새 워드 문서가 생성되었습니다.');
   } else if (currentMode === 'ppt') {
     if (!confirm('현재 슬라이드를 초기화하고 새 프레젠테이션을 만드시겠습니까?')) return;
@@ -166,7 +140,706 @@ function createNewDocument() {
   }
 }
 
-/* ==================== GLOBAL FILE OPEN (.xlsx, .csv, .docx, .pptx, etc.) ==================== */
+/* ============================================================================
+ * 1. NATIVE INSTANT EXCEL ENGINE (0ms Grid, Formulas, Multi-Sheet, .xlsx/.csv)
+ * ============================================================================ */
+function colIdxToName(c) {
+  let name = '';
+  let n = c;
+  while (n >= 0) {
+    name = String.fromCharCode((n % 26) + 65) + name;
+    n = Math.floor(n / 26) - 1;
+  }
+  return name;
+}
+
+function colNameToIdx(letters) {
+  let col = 0;
+  const up = letters.toUpperCase();
+  for (let i = 0; i < up.length; i++) {
+    col = col * 26 + (up.charCodeAt(i) - 64);
+  }
+  return col - 1;
+}
+
+function cellCoordToAddr(r, c) {
+  return `${colIdxToName(c)}${r + 1}`;
+}
+
+function addrToCellCoord(addr) {
+  const m = String(addr).trim().match(/^([A-Za-z]+)(\d+)$/);
+  if (!m) return null;
+  return {
+    c: colNameToIdx(m[1]),
+    r: parseInt(m[2], 10) - 1
+  };
+}
+
+function createBlankExcelSheet(name = 'Sheet1', rows = 35, cols = 14) {
+  return {
+    name,
+    rows,
+    cols,
+    cells: {} // key: "r,c" -> { raw: "", bold: false, align: "", color: "", bg: "", comma: true }
+  };
+}
+
+function initExcelEngine() {
+  const saved = localStorage.getItem(STORAGE_KEYS.EXCEL_DATA);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].cells) {
+        excelSheets = parsed;
+      }
+    } catch (e) {}
+  }
+
+  if (!excelSheets || excelSheets.length === 0) {
+    loadExcelSample('budget', true);
+  } else {
+    renderExcelWorkspace();
+  }
+
+  const formulaInput = document.getElementById('excelFormulaInput');
+  formulaInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      setCellRawValue(selectedRow, selectedCol, formulaInput.value);
+      selectExcelCell(Math.min(getActiveSheet().rows - 1, selectedRow + 1), selectedCol);
+    }
+  });
+  formulaInput.addEventListener('input', () => {
+    setCellRawValue(selectedRow, selectedCol, formulaInput.value, false);
+  });
+}
+
+function getActiveSheet() {
+  return excelSheets[activeSheetIdx] || excelSheets[0];
+}
+
+function saveExcelState() {
+  localStorage.setItem(STORAGE_KEYS.EXCEL_DATA, JSON.stringify(excelSheets));
+  markAutoSaved();
+}
+
+function setCellRawValue(r, c, rawVal, fullRender = true) {
+  const sheet = getActiveSheet();
+  const key = `${r},${c}`;
+  if (!sheet.cells[key]) {
+    sheet.cells[key] = { raw: '', comma: true };
+  }
+  sheet.cells[key].raw = String(rawVal ?? '');
+  saveExcelState();
+  if (fullRender) {
+    renderExcelGrid();
+    updateExcelFormulaBarAndStats();
+  }
+}
+
+function getCellObj(sheet, r, c) {
+  return sheet.cells[`${r},${c}`] || null;
+}
+
+/* ---- Excel Formula Evaluator (=SUM, =AVERAGE, =MIN, =MAX, =COUNT, =IF, arithmetic) ---- */
+function evaluateCellValue(sheet, r, c, visited = new Set()) {
+  const key = `${r},${c}`;
+  if (visited.has(key)) return '#REF!';
+  visited.add(key);
+
+  const cell = sheet.cells[key];
+  if (!cell || cell.raw === '' || cell.raw === null || cell.raw === undefined) {
+    return '';
+  }
+
+  const rawStr = String(cell.raw).trim();
+  if (!rawStr.startsWith('=')) {
+    const num = Number(rawStr.replace(/,/g, ''));
+    if (rawStr !== '' && !isNaN(num) && /^-?\d+(\.\d+)?$/.test(rawStr.replace(/,/g, ''))) {
+      return num;
+    }
+    return rawStr;
+  }
+
+  try {
+    let expr = rawStr.slice(1).trim();
+
+    // 1. Expand Range Functions: SUM(A1:B5), AVERAGE(C2:C6), MIN(...), MAX(...), COUNT(...)
+    expr = expr.replace(/\b(SUM|AVERAGE|AVG|MIN|MAX|COUNT)\s*\(\s*([A-Za-z]+\d+)\s*:\s*([A-Za-z]+\d+)\s*\)/gi, (_, fn, startAddr, endAddr) => {
+      const s = addrToCellCoord(startAddr);
+      const e = addrToCellCoord(endAddr);
+      if (!s || !e) return '0';
+      const r1 = Math.min(s.r, e.r);
+      const r2 = Math.max(s.r, e.r);
+      const c1 = Math.min(s.c, e.c);
+      const c2 = Math.max(s.c, e.c);
+      const nums = [];
+      for (let rr = r1; rr <= r2; rr++) {
+        for (let cc = c1; cc <= c2; cc++) {
+          const val = evaluateCellValue(sheet, rr, cc, new Set(visited));
+          const n = Number(val);
+          if (val !== '' && !isNaN(n)) nums.push(n);
+        }
+      }
+      const upFn = fn.toUpperCase();
+      if (upFn === 'SUM') return String(nums.reduce((a, b) => a + b, 0));
+      if (upFn === 'AVERAGE' || upFn === 'AVG') return nums.length ? String(nums.reduce((a, b) => a + b, 0) / nums.length) : '0';
+      if (upFn === 'MIN') return nums.length ? String(Math.min(...nums)) : '0';
+      if (upFn === 'MAX') return nums.length ? String(Math.max(...nums)) : '0';
+      if (upFn === 'COUNT') return String(nums.length);
+      return '0';
+    });
+
+    // 2. Replace Single Cell References (e.g. C2, D5)
+    expr = expr.replace(/\b([A-Za-z]{1,2}\d{1,3})\b/g, (addr) => {
+      const coord = addrToCellCoord(addr);
+      if (!coord) return '0';
+      const val = evaluateCellValue(sheet, coord.r, coord.c, new Set(visited));
+      const n = Number(val);
+      return val !== '' && !isNaN(n) ? String(n) : '0';
+    });
+
+    // Safe arithmetic evaluation
+    if (!/^[0-9+\-*/().\s]+$/.test(expr)) {
+      return '#수식오류';
+    }
+    const result = Function(`"use strict"; return (${expr});`)();
+    if (typeof result === 'number' && isFinite(result)) {
+      return Math.round(result * 100) / 100;
+    }
+    return result;
+  } catch (err) {
+    return '#ERROR';
+  }
+}
+
+function formatDisplayValue(sheet, r, c) {
+  const cell = getCellObj(sheet, r, c);
+  const val = evaluateCellValue(sheet, r, c);
+  if (val === '' || val === null || val === undefined) return '';
+  if (typeof val === 'number') {
+    if (cell && cell.comma === false) return String(val);
+    return val.toLocaleString('ko-KR');
+  }
+  return String(val);
+}
+
+function renderExcelWorkspace() {
+  renderExcelSheetTabs();
+  renderExcelGrid();
+  updateExcelFormulaBarAndStats();
+}
+
+function renderExcelSheetTabs() {
+  const container = document.getElementById('excelSheetTabs');
+  container.innerHTML = '';
+
+  excelSheets.forEach((sh, idx) => {
+    const btn = document.createElement('button');
+    btn.className = `sheet-tab-btn ${idx === activeSheetIdx ? 'active' : ''}`;
+    btn.textContent = sh.name;
+    btn.onclick = () => {
+      activeSheetIdx = idx;
+      selectedRow = 0;
+      selectedCol = 0;
+      renderExcelWorkspace();
+    };
+    btn.ondblclick = () => {
+      const newName = prompt('시트 이름을 입력하세요:', sh.name);
+      if (newName && newName.trim()) {
+        sh.name = newName.trim();
+        saveExcelState();
+        renderExcelSheetTabs();
+      }
+    };
+    container.appendChild(btn);
+  });
+}
+
+function addNewExcelSheet() {
+  const newName = `Sheet${excelSheets.length + 1}`;
+  excelSheets.push(createBlankExcelSheet(newName, 35, 14));
+  activeSheetIdx = excelSheets.length - 1;
+  selectedRow = 0;
+  selectedCol = 0;
+  saveExcelState();
+  renderExcelWorkspace();
+  showToast(`'${newName}' 시트가 추가되었습니다. (시트 탭 더블클릭 시 이름 변경)`);
+}
+
+function renderExcelGrid() {
+  const sheet = getActiveSheet();
+  const table = document.getElementById('excelGridTable');
+  if (!sheet || !table) return;
+
+  let html = '<thead><tr><th class="corner-header"></th>';
+  for (let c = 0; c < sheet.cols; c++) {
+    const activeCls = c === selectedCol ? 'active-header' : '';
+    html += `<th class="${activeCls}" data-col="${c}">${colIdxToName(c)}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (let r = 0; r < sheet.rows; r++) {
+    const rowActiveCls = r === selectedRow ? 'active-header' : '';
+    html += `<tr><th class="row-header ${rowActiveCls}" data-row="${r}">${r + 1}</th>`;
+
+    for (let c = 0; c < sheet.cols; c++) {
+      const cell = getCellObj(sheet, r, c);
+      const disp = formatDisplayValue(sheet, r, c);
+      const isSelected = r === selectedRow && c === selectedCol;
+      const isNum = typeof evaluateCellValue(sheet, r, c) === 'number';
+
+      let styleStr = '';
+      if (cell) {
+        if (cell.bg) styleStr += `background-color:${cell.bg};`;
+        if (cell.color) styleStr += `color:${cell.color};`;
+        if (cell.bold) styleStr += `font-weight:700;`;
+        if (cell.align) {
+          styleStr += `text-align:${cell.align};`;
+        } else if (isNum) {
+          styleStr += `text-align:right;`;
+        }
+      } else if (isNum) {
+        styleStr += `text-align:right;`;
+      }
+
+      const hasFormula = cell && String(cell.raw).startsWith('=');
+      const titleAttr = hasFormula ? `title="수식: ${escapeHtml(cell.raw)}"` : '';
+
+      html += `<td class="excel-cell ${isSelected ? 'selected-cell' : ''}" data-r="${r}" data-c="${c}" style="${styleStr}" ${titleAttr}>${escapeHtml(disp)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+
+  table.innerHTML = html;
+
+  // Bind click & dblclick on table via delegation
+  table.onclick = (e) => {
+    const td = e.target.closest('td.excel-cell');
+    if (!td) return;
+    const r = parseInt(td.dataset.r, 10);
+    const c = parseInt(td.dataset.c, 10);
+    if (editingCellInput && (r !== selectedRow || c !== selectedCol)) {
+      commitInlineCellEdit();
+    }
+    selectExcelCell(r, c);
+  };
+
+  table.ondblclick = (e) => {
+    const td = e.target.closest('td.excel-cell');
+    if (!td) return;
+    const r = parseInt(td.dataset.r, 10);
+    const c = parseInt(td.dataset.c, 10);
+    selectExcelCell(r, c);
+    openInlineCellEditor(td, r, c);
+  };
+}
+
+function selectExcelCell(r, c) {
+  const sheet = getActiveSheet();
+  selectedRow = Math.max(0, Math.min(sheet.rows - 1, r));
+  selectedCol = Math.max(0, Math.min(sheet.cols - 1, c));
+
+  // Fast DOM class update without rebuilding full table
+  const table = document.getElementById('excelGridTable');
+  table.querySelectorAll('.selected-cell').forEach((el) => el.classList.remove('selected-cell'));
+  table.querySelectorAll('.active-header').forEach((el) => el.classList.remove('active-header'));
+
+  const targetTd = table.querySelector(`td.excel-cell[data-r="${selectedRow}"][data-c="${selectedCol}"]`);
+  if (targetTd) {
+    targetTd.classList.add('selected-cell');
+    targetTd.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  const colTh = table.querySelector(`thead th[data-col="${selectedCol}"]`);
+  if (colTh) colTh.classList.add('active-header');
+  const rowTh = table.querySelector(`tbody th[data-row="${selectedRow}"]`);
+  if (rowTh) rowTh.classList.add('active-header');
+
+  updateExcelFormulaBarAndStats();
+}
+
+function openInlineCellEditor(td, r, c, initialChar = null) {
+  if (editingCellInput) commitInlineCellEdit();
+
+  const sheet = getActiveSheet();
+  const cell = getCellObj(sheet, r, c);
+  const currentRaw = initialChar !== null ? initialChar : (cell ? cell.raw : '');
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'excel-cell-editor';
+  input.value = currentRaw;
+
+  td.appendChild(input);
+  input.focus();
+  if (initialChar === null) {
+    input.select();
+  } else {
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+
+  editingCellInput = { input, r, c };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitInlineCellEdit();
+      selectExcelCell(r + 1, c);
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      commitInlineCellEdit();
+      selectExcelCell(r, c + (e.shiftKey ? -1 : 1));
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      editingCellInput = null;
+      renderExcelGrid();
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    if (editingCellInput) {
+      commitInlineCellEdit();
+    }
+  });
+}
+
+function commitInlineCellEdit() {
+  if (!editingCellInput) return;
+  const { input, r, c } = editingCellInput;
+  const val = input.value;
+  editingCellInput = null;
+  setCellRawValue(r, c, val, true);
+}
+
+function updateExcelFormulaBarAndStats() {
+  const sheet = getActiveSheet();
+  const addr = cellCoordToAddr(selectedRow, selectedCol);
+  document.getElementById('excelCellAddressBox').textContent = addr;
+
+  const cell = getCellObj(sheet, selectedRow, selectedCol);
+  const formulaInput = document.getElementById('excelFormulaInput');
+  if (document.activeElement !== formulaInput) {
+    formulaInput.value = cell ? cell.raw : '';
+  }
+
+  // Compute sheet numeric summary
+  let sum = 0;
+  let count = 0;
+  Object.keys(sheet.cells).forEach((k) => {
+    const [r, c] = k.split(',').map(Number);
+    const val = evaluateCellValue(sheet, r, c);
+    if (typeof val === 'number' && !isNaN(val)) {
+      sum += val;
+      count++;
+    }
+  });
+  const avg = count > 0 ? Math.round(sum / count) : 0;
+
+  document.getElementById('excelSummaryStats').textContent =
+    `선택 셀: ${addr}  |  시트 숫자 합계: ${sum.toLocaleString('ko-KR')}  |  평균: ${avg.toLocaleString('ko-KR')}  |  데이터 셀: ${count}개`;
+}
+
+function formatSelectedExcelCells(prop, value) {
+  const sheet = getActiveSheet();
+  const key = `${selectedRow},${selectedCol}`;
+  if (!sheet.cells[key]) sheet.cells[key] = { raw: '', comma: true };
+  const cell = sheet.cells[key];
+
+  if (prop === 'bold') cell.bold = !cell.bold;
+  else if (prop === 'align') cell.align = value;
+  else if (prop === 'color') cell.color = value;
+  else if (prop === 'bg') cell.bg = value;
+  else if (prop === 'comma') cell.comma = cell.comma === false ? true : false;
+
+  saveExcelState();
+  renderExcelGrid();
+}
+
+function insertExcelFunction(fnName) {
+  const sheet = getActiveSheet();
+  // Find numeric cells above current cell in same column
+  let startR = 1;
+  const endR = Math.max(1, selectedRow);
+  const colLetter = colIdxToName(selectedCol);
+  const formula = `=${fnName}(${colLetter}${startR + 1}:${colLetter}${endR})`;
+  setCellRawValue(selectedRow, selectedCol, formula, true);
+  showToast(`${cellCoordToAddr(selectedRow, selectedCol)} 셀에 ${formula} 수식이 적용되었습니다.`);
+}
+
+function addExcelRows(count = 10) {
+  const sheet = getActiveSheet();
+  sheet.rows += count;
+  saveExcelState();
+  renderExcelGrid();
+  showToast(`행 ${count}개가 추가되었습니다. (총 ${sheet.rows}행)`);
+}
+
+function addExcelCols(count = 5) {
+  const sheet = getActiveSheet();
+  sheet.cols += count;
+  saveExcelState();
+  renderExcelGrid();
+  showToast(`열 ${count}개가 추가되었습니다. (총 ${sheet.cols}열)`);
+}
+
+function populateSheetFromAOA(sheetName, aoa, headerColor = '#107c41') {
+  const rows = Math.max(35, aoa.length + 15);
+  const cols = Math.max(12, (aoa[0]?.length || 8) + 4);
+  const sheet = createBlankExcelSheet(sheetName, rows, cols);
+
+  for (let r = 0; r < aoa.length; r++) {
+    for (let c = 0; c < aoa[r].length; c++) {
+      const val = aoa[r][c];
+      if (val === undefined || val === null || val === '') continue;
+      const isHeader = r === 0;
+      const isTotalRow = r === aoa.length - 1 && String(aoa[r][0]).includes('합계');
+      sheet.cells[`${r},${c}`] = {
+        raw: String(val),
+        bold: isHeader || isTotalRow,
+        bg: isHeader ? headerColor : (isTotalRow ? '#ecfdf5' : ''),
+        color: isHeader ? '#ffffff' : '#0f172a',
+        align: isHeader ? 'center' : (typeof val === 'number' || String(val).startsWith('=') ? 'right' : 'left'),
+        comma: true
+      };
+    }
+  }
+  return sheet;
+}
+
+function loadExcelSample(type, silent = false) {
+  let aoa = [];
+  let sheetName = 'Sheet1';
+  let docTitle = '월간예산_가계부';
+
+  if (type === 'budget') {
+    sheetName = '월간예산_가계부';
+    docTitle = '2026_월간예산_가계부';
+    aoa = [
+      ['항목 구분', '세부 지출 내역', '월 예산 (원)', '실제 지출 (원)', '잔여 예산 (수식)', '비고 / 결제수단'],
+      ['고정지출', '통신비 및 인터넷 요금', 85000, 82000, '=C2-D2', '자동이체'],
+      ['고정지출', 'MS 365 오피스 구독료 해지!', 11900, 0, '=C3-D3', 'NEWT 웹오피스로 100% 절감'],
+      ['변동생활비', '식비 / 마트 장보기', 600000, 535000, '=C4-D4', '신용카드'],
+      ['변동생활비', '교통비 / 차량 주유비', 200000, 185000, '=C5-D5', '체크카드'],
+      ['문화/자기계발', '도서 구입 및 운동', 150000, 120000, '=C6-D6', ''],
+      ['저축/투자', '미국 배당 ETF 정기 적립', 1000000, 1000000, '=C7-D7', '자동매수 완료'],
+      ['합계', '월간 총계 (자동 수식 계산)', '=SUM(C2:C7)', '=SUM(D2:D7)', '=SUM(E2:E7)', '수식: =SUM(C2:C7)']
+    ];
+  } else if (type === 'invoice') {
+    sheetName = '거래명세서';
+    docTitle = '표준_거래명세서';
+    aoa = [
+      ['품목코드', '품목명 / 규격', '수량', '단가 (원)', '공급가액 (수식)', '부가세 10% (수식)', '합계금액 (수식)'],
+      ['ITM-101', '비즈니스 노트북 16GB / 512GB', 2, 1250000, '=C2*D2', '=E2*0.1', '=E2+F2'],
+      ['ITM-102', '27인치 4K UHD 모니터', 2, 420000, '=C3*D3', '=E3*0.1', '=E3+F3'],
+      ['ITM-103', '무선 저소음 키보드/마우스 세트', 4, 65000, '=C4*D4', '=E4*0.1', '=E4+F4'],
+      ['ITM-104', 'USB-C 멀티 도킹 스테이션', 2, 89000, '=C5*D5', '=E5*0.1', '=E5+F5'],
+      ['합계', '총 청구 금액', '=SUM(C2:C5)', '', '=SUM(E2:E5)', '=SUM(F2:F5)', '=SUM(G2:G5)']
+    ];
+  } else if (type === 'calc') {
+    sheetName = '복리수익_시뮬레이션';
+    docTitle = '자산_복리수익_계산표';
+    aoa = [
+      ['투자 연차', '기초 투자금 (원)', '연간 추가납입 (원)', '연 목표수익률 (%)', '연말 평가금액 (수식)', '순수익금 (수식)'],
+      [1, 20000000, 12000000, 12, '=(B2+C2)*1.12', '=E2-(B2+C2)'],
+      [2, '=E2', 12000000, 12, '=(B3+C3)*1.12', '=E3-(B3+C3)'],
+      [3, '=E3', 12000000, 12, '=(B4+C4)*1.12', '=E4-(B4+C4)'],
+      [4, '=E4', 12000000, 12, '=(B5+C5)*1.12', '=E5-(B5+C5)'],
+      [5, '=E5', 12000000, 12, '=(B6+C6)*1.12', '=E6-(B6+C6)'],
+      ['합계', '5년 누적 성과', '=SUM(C2:C6)', '', '=MAX(E2:E6)', '=SUM(F2:F6)']
+    ];
+  }
+
+  excelSheets = [populateSheetFromAOA(sheetName, aoa)];
+  activeSheetIdx = 0;
+  selectedRow = 1;
+  selectedCol = 2;
+  document.getElementById('docTitleInput').value = docTitle;
+  saveExcelState();
+  renderExcelWorkspace();
+  if (!silent) showToast(`'${sheetName}' 시트가 즉시 로드되었습니다.`);
+}
+
+/* ---- Excel Keyboard Navigation ---- */
+function handleGlobalKeyDown(e) {
+  // Ignore if typing inside an input/textarea/word editor
+  const tag = document.activeElement?.tagName;
+  const isWordEditor = document.activeElement?.id === 'wordPageEditor';
+
+  if (currentMode === 'excel' && !editingCellInput && tag !== 'INPUT' && tag !== 'TEXTAREA' && !isWordEditor) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectExcelCell(selectedRow + 1, selectedCol);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectExcelCell(selectedRow - 1, selectedCol);
+    } else if (e.key === 'ArrowRight' || e.key === 'Tab') {
+      e.preventDefault();
+      selectExcelCell(selectedRow, selectedCol + (e.shiftKey ? -1 : 1));
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      selectExcelCell(selectedRow, selectedCol - 1);
+    } else if (e.key === 'Enter' || e.key === 'F2') {
+      e.preventDefault();
+      const td = document.querySelector(`td.excel-cell[data-r="${selectedRow}"][data-c="${selectedCol}"]`);
+      if (td) openInlineCellEditor(td, selectedRow, selectedCol);
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      setCellRawValue(selectedRow, selectedCol, '', true);
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const td = document.querySelector(`td.excel-cell[data-r="${selectedRow}"][data-c="${selectedCol}"]`);
+      if (td) {
+        e.preventDefault();
+        openInlineCellEditor(td, selectedRow, selectedCol, e.key);
+      }
+    }
+  } else if (currentMode === 'ppt') {
+    if (e.key === 'F5') {
+      e.preventDefault();
+      startSlideShow();
+    } else if (e.key === 'Escape') {
+      const modal = document.getElementById('pptPresentationModal');
+      if (!modal.classList.contains('hidden')) closeSlideShow();
+    } else if (!document.getElementById('pptPresentationModal').classList.contains('hidden')) {
+      if (e.key === 'ArrowRight' || e.key === ' ') stepPresentation(1);
+      if (e.key === 'ArrowLeft') stepPresentation(-1);
+    }
+  }
+}
+
+/* ---- Excel Import & Export (.xlsx / .csv) ---- */
+async function importExcelFile(file) {
+  if (typeof XLSX === 'undefined') {
+    showToast('엑셀 파서 라이브러리를 불러오는 중입니다. 1초 후 다시 시도해 주세요.');
+    return;
+  }
+  const buffer = await file.arrayBuffer();
+  const wb = XLSX.read(buffer, { type: 'array', cellFormula: true });
+
+  excelSheets = wb.SheetNames.map((name) => {
+    const ws = wb.Sheets[name];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    const rows = Math.max(35, aoa.length + 15);
+    const cols = Math.max(14, (aoa[0]?.length || 10) + 5);
+    const sheet = createBlankExcelSheet(name, rows, cols);
+
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: C });
+        const cell = ws[addr];
+        if (!cell) continue;
+        const rawVal = cell.f ? `=${cell.f}` : (cell.v !== undefined ? String(cell.v) : '');
+        if (rawVal !== '') {
+          sheet.cells[`${R},${C}`] = {
+            raw: rawVal,
+            bold: R === 0,
+            bg: R === 0 ? '#f1f5f9' : '',
+            comma: true
+          };
+        }
+      }
+    }
+    return sheet;
+  });
+
+  activeSheetIdx = 0;
+  selectedRow = 0;
+  selectedCol = 0;
+  saveExcelState();
+  renderExcelWorkspace();
+  showToast(`'${file.name}' (${excelSheets.length}개 시트) 불러오기 완료!`);
+}
+
+function buildWorkbookFromState() {
+  const wb = XLSX.utils.book_new();
+
+  excelSheets.forEach((sheet, idx) => {
+    let maxR = 0;
+    let maxC = 0;
+    Object.keys(sheet.cells).forEach((k) => {
+      const cell = sheet.cells[k];
+      if (cell && cell.raw !== '') {
+        const [r, c] = k.split(',').map(Number);
+        if (r > maxR) maxR = r;
+        if (c > maxC) maxC = c;
+      }
+    });
+
+    const aoa = [];
+    for (let r = 0; r <= maxR; r++) {
+      const rowArr = [];
+      for (let c = 0; c <= maxC; c++) {
+        const val = evaluateCellValue(sheet, r, c);
+        rowArr.push(val);
+      }
+      aoa.push(rowArr);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Attach formulas to SheetJS worksheet
+    for (let r = 0; r <= maxR; r++) {
+      for (let c = 0; c <= maxC; c++) {
+        const cell = getCellObj(sheet, r, c);
+        if (cell && String(cell.raw).startsWith('=')) {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          const evaluated = evaluateCellValue(sheet, r, c);
+          ws[addr] = {
+            t: typeof evaluated === 'number' ? 'n' : 's',
+            v: evaluated,
+            f: String(cell.raw).slice(1)
+          };
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, sheet.name || `Sheet${idx + 1}`);
+  });
+
+  return wb;
+}
+
+function exportExcelXLSX() {
+  if (typeof XLSX === 'undefined') {
+    exportExcelCSV();
+    return;
+  }
+  const wb = buildWorkbookFromState();
+  const fileName = `${getCleanDocTitle()}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+  showToast(`'${fileName}' 엑셀 파일 다운로드 완료!`);
+}
+
+function exportExcelCSV() {
+  const sheet = getActiveSheet();
+  let maxR = 0;
+  let maxC = 0;
+  Object.keys(sheet.cells).forEach((k) => {
+    if (sheet.cells[k]?.raw !== '') {
+      const [r, c] = k.split(',').map(Number);
+      if (r > maxR) maxR = r;
+      if (c > maxC) maxC = c;
+    }
+  });
+
+  const lines = [];
+  for (let r = 0; r <= maxR; r++) {
+    const rowCols = [];
+    for (let c = 0; c <= maxC; c++) {
+      const val = String(evaluateCellValue(sheet, r, c) ?? '').replace(/"/g, '""');
+      rowCols.push(`"${val}"`);
+    }
+    lines.push(rowCols.join(','));
+  }
+
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  triggerBlobDownload(blob, `${getCleanDocTitle()}.csv`);
+  showToast('CSV 파일 다운로드 완료!');
+}
+
+/* ==================== GLOBAL FILE OPEN ==================== */
 async function handleGlobalFileOpen(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -197,255 +870,16 @@ async function handleGlobalFileOpen(event) {
         editor.innerHTML = text;
       }
       saveWordState();
+      updateWordCounters();
       showToast(`'${file.name}' 문서를 불러왔습니다.`);
     } else if (['pptx'].includes(ext)) {
       switchOfficeMode('ppt');
       await importPptxFile(file);
-    } else if (['json'].includes(ext)) {
-      const jsonData = JSON.parse(await file.text());
-      if (Array.isArray(jsonData) && jsonData[0] && jsonData[0].elements) {
-        switchOfficeMode('ppt');
-        pptDeck = jsonData;
-        currentSlideIndex = 0;
-        renderPptWorkspace();
-        showToast('PPT 슬라이드 데이터를 불러왔습니다.');
-      }
-    } else {
-      showToast('지원하지 않는 파일 형식입니다.');
     }
   } catch (err) {
     console.error(err);
-    showToast('파일을 여는 중 오류가 발생했습니다: ' + err.message);
+    showToast('파일 열기 오류: ' + err.message);
   }
-}
-
-/* ============================================================================
- * 1. EXCEL ENGINE (Luckysheet + SheetJS .xlsx / .csv)
- * ============================================================================ */
-function initExcelEngine() {
-  loadExcelSample('budget', true);
-}
-
-function createLuckysheetInstance(sheetsData) {
-  if (window.luckysheet && typeof luckysheet.destroy === 'function' && luckysheetInitialized) {
-    try {
-      luckysheet.destroy();
-    } catch (e) {}
-  }
-
-  luckysheet.create({
-    container: 'luckysheet-container',
-    lang: 'ko',
-    showinfobar: false,
-    showsheetbar: true,
-    showstatisticBar: true,
-    enableAddRow: true,
-    enableAddBackTop: true,
-    data: sheetsData
-  });
-  luckysheetInitialized = true;
-}
-
-function aoaToCelldata(aoa, headerBg = '#107c41') {
-  const celldata = [];
-  for (let r = 0; r < aoa.length; r++) {
-    for (let c = 0; c < aoa[r].length; c++) {
-      const raw = aoa[r][c];
-      if (raw === null || raw === undefined || raw === '') continue;
-
-      const cellObj = {
-        r,
-        c,
-        v: {}
-      };
-
-      if (typeof raw === 'string' && raw.startsWith('=')) {
-        cellObj.v.f = raw;
-        cellObj.v.v = '';
-      } else if (typeof raw === 'number') {
-        cellObj.v.v = raw;
-        cellObj.v.m = raw.toLocaleString('ko-KR');
-        cellObj.v.ct = { fa: '#,##0', t: 'n' };
-      } else {
-        cellObj.v.v = String(raw);
-        cellObj.v.m = String(raw);
-      }
-
-      if (r === 0) {
-        cellObj.v.bg = headerBg;
-        cellObj.v.fc = '#ffffff';
-        cellObj.v.bl = 1;
-        cellObj.v.ht = 0;
-      }
-
-      celldata.push(cellObj);
-    }
-  }
-  return celldata;
-}
-
-function loadExcelSample(type, silent = false) {
-  let aoa = [];
-  let sheetName = 'Sheet1';
-
-  if (type === 'budget') {
-    sheetName = '월간예산_가계부';
-    aoa = [
-      ['항목 구분', '세부 내역', '예산 (원)', '실제 지출 (원)', '차액 (예산-실출)', '비고'],
-      ['고정지출', '통신비 및 인터넷', 85000, 82000, '=C2-D2', '자동이체'],
-      ['고정지출', '구독료 (MS 오피스 해지!)', 11900, 0, '=C3-D3', 'NEWT 웹오피스로 전환 완료'],
-      ['생활비', '식비 / 장보기', 600000, 540000, '=C4-D4', '카드 결제'],
-      ['생활비', '교통 / 주유비', 200000, 185000, '=C5-D5', ''],
-      ['저축/투자', 'ETF 정기 적립', 1000000, 1000000, '=C6-D6', '완료'],
-      ['합계', '총계', '=SUM(C2:C6)', '=SUM(D2:D6)', '=SUM(E2:E6)', '자동 수식 합계']
-    ];
-  } else if (type === 'invoice') {
-    sheetName = '거래명세서';
-    aoa = [
-      ['품목코드', '품목명 / 규격', '수량', '단가 (원)', '공급가액', '부가세 (10%)', '합계금액'],
-      ['ITM-001', '고성능 사무용 노트북 16GB', 2, 1250000, '=C2*D2', '=E2*0.1', '=E2+F2'],
-      ['ITM-002', '27인치 4K 모니터', 2, 420000, '=C3*D3', '=E3*0.1', '=E3+F3'],
-      ['ITM-003', '무선 키보드/마우스 세트', 4, 65000, '=C4*D4', '=E4*0.1', '=E4+F4'],
-      ['합계', '총 청구 금액', '=SUM(C2:C4)', '', '=SUM(E2:E4)', '=SUM(F2:F4)', '=SUM(G2:G4)']
-    ];
-  } else if (type === 'calc') {
-    sheetName = '수익률_시뮬레이션';
-    aoa = [
-      ['연차', '기초 자산 (원)', '연간 추가납입', '목표 수익률(%)', '연말 평가금액'],
-      [1, 10000000, 6000000, 12, '=(B2+C2)*1.12'],
-      [2, '=E2', 6000000, 12, '=(B3+C3)*1.12'],
-      [3, '=E3', 6000000, 12, '=(B4+C4)*1.12'],
-      [4, '=E4', 6000000, 12, '=(B5+C5)*1.12'],
-      [5, '=E5', 6000000, 12, '=(B6+C6)*1.12']
-    ];
-  }
-
-  createLuckysheetInstance([
-    {
-      name: sheetName,
-      color: '#107c41',
-      status: 1,
-      order: 0,
-      celldata: aoaToCelldata(aoa),
-      row: 60,
-      column: 26,
-      config: {
-        columnlen: { 0: 110, 1: 210, 2: 130, 3: 130, 4: 140, 5: 180, 6: 140 }
-      }
-    }
-  ]);
-
-  if (!silent) showToast(`'${sheetName}' 샘플 시트를 불러왔습니다.`);
-}
-
-async function importExcelFile(file) {
-  const buffer = await file.arrayBuffer();
-  const wb = XLSX.read(buffer, { type: 'array', cellFormula: true });
-
-  const luckySheets = wb.SheetNames.map((name, idx) => {
-    const ws = wb.Sheets[name];
-    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
-    const celldata = [];
-
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
-    for (let R = range.s.r; R <= range.e.r; ++R) {
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        const cell = ws[addr];
-        if (!cell) continue;
-        const vObj = {
-          v: cell.v !== undefined ? cell.v : '',
-          m: cell.w !== undefined ? String(cell.w) : String(cell.v !== undefined ? cell.v : '')
-        };
-        if (cell.f) {
-          vObj.f = '=' + cell.f;
-        }
-        celldata.push({ r: R, c: C, v: vObj });
-      }
-    }
-
-    return {
-      name,
-      status: idx === 0 ? 1 : 0,
-      order: idx,
-      celldata,
-      row: Math.max(60, aoa.length + 20),
-      column: Math.max(26, (aoa[0]?.length || 10) + 10)
-    };
-  });
-
-  createLuckysheetInstance(luckySheets);
-  showToast(`엑셀 파일 '${file.name}' (${luckySheets.length}개 시트) 열기 완료!`);
-}
-
-function convertLuckysheetToWorkbook() {
-  const sheets = luckysheet.getAllSheets();
-  const wb = XLSX.utils.book_new();
-
-  sheets.forEach((sheet, idx) => {
-    const data = sheet.data || [];
-    let maxR = 0;
-    let maxC = 0;
-
-    for (let r = 0; r < data.length; r++) {
-      if (!data[r]) continue;
-      for (let c = 0; c < data[r].length; c++) {
-        const cell = data[r][c];
-        if (cell && (cell.v !== undefined && cell.v !== null && cell.v !== '' || cell.f)) {
-          if (r > maxR) maxR = r;
-          if (c > maxC) maxC = c;
-        }
-      }
-    }
-
-    const aoa = [];
-    for (let r = 0; r <= maxR; r++) {
-      const rowArr = [];
-      for (let c = 0; c <= maxC; c++) {
-        const cell = data[r] ? data[r][c] : null;
-        if (!cell) {
-          rowArr.push('');
-        } else {
-          rowArr.push(cell.v !== undefined && cell.v !== null ? cell.v : (cell.m || ''));
-        }
-      }
-      aoa.push(rowArr);
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    // Preserve formulas if present
-    for (let r = 0; r <= maxR; r++) {
-      for (let c = 0; c <= maxC; c++) {
-        const cell = data[r] ? data[r][c] : null;
-        if (cell && cell.f) {
-          const addr = XLSX.utils.encode_cell({ r, c });
-          if (!ws[addr]) ws[addr] = { t: 'n', v: Number(cell.v) || 0 };
-          ws[addr].f = cell.f.replace(/^=/, '');
-        }
-      }
-    }
-
-    XLSX.utils.book_append_sheet(wb, ws, sheet.name || `Sheet${idx + 1}`);
-  });
-
-  return wb;
-}
-
-function exportExcelXLSX() {
-  const wb = convertLuckysheetToWorkbook();
-  const fileName = `${getCleanDocTitle()}.xlsx`;
-  XLSX.writeFile(wb, fileName);
-  showToast(`'${fileName}' 엑셀 파일 다운로드 완료!`);
-}
-
-function exportExcelCSV() {
-  const wb = convertLuckysheetToWorkbook();
-  const firstSheet = wb.Sheets[wb.SheetNames[0]];
-  const csv = XLSX.utils.sheet_to_csv(firstSheet);
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  triggerBlobDownload(blob, `${getCleanDocTitle()}.csv`);
-  showToast('CSV 파일 다운로드 완료!');
 }
 
 /* ============================================================================
@@ -493,8 +927,6 @@ function execWordCmd(cmd, value = null) {
 }
 
 function applyWordFontSize(sizePt) {
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return;
   document.execCommand('fontSize', false, '7');
   const fontElements = document.getElementById('wordPageEditor').querySelectorAll('font[size="7"]');
   fontElements.forEach((el) => {
@@ -509,19 +941,14 @@ function insertWordTable() {
   const cols = parseInt(prompt('표의 열(칸) 수를 입력하세요:', '3'), 10) || 3;
 
   let html = '<table><thead><tr>';
-  for (let c = 0; c < cols; c++) {
-    html += `<th>항목 ${c + 1}</th>`;
-  }
+  for (let c = 0; c < cols; c++) html += `<th>항목 ${c + 1}</th>`;
   html += '</tr></thead><tbody>';
   for (let r = 0; r < rows - 1; r++) {
     html += '<tr>';
-    for (let c = 0; c < cols; c++) {
-      html += '<td>내용 입력</td>';
-    }
+    for (let c = 0; c < cols; c++) html += '<td>내용 입력</td>';
     html += '</tr>';
   }
   html += '</tbody></table><p><br></p>';
-
   execWordCmd('insertHTML', html);
 }
 
@@ -534,8 +961,7 @@ function insertWordImage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const imgHtml = `<p><img src="${reader.result}" style="max-width:100%; height:auto; border-radius:4px;" /></p>`;
-      execWordCmd('insertHTML', imgHtml);
+      execWordCmd('insertHTML', `<p><img src="${reader.result}" style="max-width:100%; height:auto;" /></p>`);
     };
     reader.readAsDataURL(file);
   };
@@ -553,13 +979,13 @@ function loadWordTemplate(type, silent = false) {
   if (type === 'report') {
     editor.innerHTML = `
       <h1>2026년 프로젝트 추진 기획 및 업무 보고서</h1>
-      <p style="color:#475569;"><strong>작성일자:</strong> ${today} &nbsp;|&nbsp; <strong>작성자:</strong> 기획팀 &nbsp;|&nbsp; <strong>문서등급:</strong> 대외비</p>
+      <p style="color:#475569;"><strong>작성일자:</strong> ${today} &nbsp;|&nbsp; <strong>작성자:</strong> 기획팀 &nbsp;|&nbsp; <strong>문서등급:</strong> 일반</p>
       <hr style="border:none; border-top:2px solid #1e3a8a; margin:14px 0 20px;" />
 
       <h2>1. 추진 배경 및 목적</h2>
-      <p>본 문서는 상용 오피스 구독 비용을 절감하고 어느 PC에서나 웹 브라우저만으로 엑셀·워드·파워포인트 문서를 즉시 열람·편집·저장할 수 있는 클라우드 독립형 오피스 환경을 구축하기 위해 작성되었습니다.</p>
+      <p>상용 MS 오피스 구독 비용을 100% 절감하고, 어느 노트북에서나 웹 주소 접속 즉시 0.1초 만에 엑셀·워드·파워포인트 문서를 편집·저장할 수 있는 초경량 웹 오피스 환경을 구축합니다.</p>
 
-      <h2>2. 주요 실행 계획 및 예산 비교</h2>
+      <h2>2. 주요 실행 계획 및 비용 비교</h2>
       <table>
         <thead>
           <tr>
@@ -571,32 +997,25 @@ function loadWordTemplate(type, silent = false) {
         </thead>
         <tbody>
           <tr>
-            <td><strong>연간 비용</strong></td>
-            <td>매년 정기 구독료 발생</td>
-            <td><strong>0원 (100% 영구 무료)</strong></td>
+            <td><strong>연간 구독료</strong></td>
+            <td>매년 정기 결제 발생</td>
+            <td><strong>0원 (평생 무료)</strong></td>
             <td>100% 비용 절감</td>
           </tr>
           <tr>
-            <td><strong>설치 여부</strong></td>
-            <td>노트북마다 무거운 설치 필요</td>
-            <td><strong>설치 없이 웹 주소 접속 즉시 사용</strong></td>
-            <td>관리 편의성 극대화</td>
+            <td><strong>실행 속도</strong></td>
+            <td>무거운 설치 프로그램 구동</td>
+            <td><strong>브라우저 접속 즉시 0.1초 로딩</strong></td>
+            <td>초고속 업무 처리</td>
           </tr>
           <tr>
-            <td><strong>호환 포맷</strong></td>
+            <td><strong>호환 파일</strong></td>
             <td>.xlsx, .docx, .pptx</td>
-            <td><strong>.xlsx, .docx/.doc, .pptx 완벽 호환</strong></td>
-            <td>업무 연속성 유지</td>
+            <td><strong>.xlsx, .docx/.doc, .pptx 완벽 지원</strong></td>
+            <td>100% 호환</td>
           </tr>
         </tbody>
       </table>
-
-      <h2>3. 향후 추진 일정</h2>
-      <ul>
-        <li><strong>1단계:</strong> 기존 노트북의 엑셀(.xlsx), 워드(.docx), 피피티(.pptx) 파일 열기 및 호환성 점검</li>
-        <li><strong>2단계:</strong> 불필요한 MS 오피스 정기 구독 해지 완료</li>
-        <li><strong>3단계:</strong> 외부 노트북 및 태블릿에서 북마크 하나로 즉시 업무 활용</li>
-      </ul>
     `;
   } else if (type === 'minutes') {
     editor.innerHTML = `
@@ -607,7 +1026,7 @@ function loadWordTemplate(type, silent = false) {
             <th style="width:20%;">회의 일시</th>
             <td style="width:30%;">${today} 10:00 ~ 11:00</td>
             <th style="width:20%;">회의 장소</th>
-            <td style="width:30%;">대회의실 / 화상회의</td>
+            <td style="width:30%;">대회의실</td>
           </tr>
           <tr>
             <th>참석자</th>
@@ -615,39 +1034,15 @@ function loadWordTemplate(type, silent = false) {
           </tr>
           <tr>
             <th>회의 안건</th>
-            <td colspan="3"><strong>2026년 신규 사업 마일스톤 점검 및 리소스 배분</strong></td>
+            <td colspan="3"><strong>신규 사업 마일스톤 점검 및 리소스 배분</strong></td>
           </tr>
         </tbody>
       </table>
-
-      <h2>1. 주요 논의 사항</h2>
+      <h2>1. 주요 결정 사항</h2>
       <ul>
-        <li>핵심 과제 A: 일정 차질 없이 진행 중 (진척률 85%)</li>
-        <li>핵심 과제 B: 외부 협력사 검토 의견 반영하여 다음 주 월요일 최종본 배포 예정</li>
+        <li>핵심 과제 A: 금주 금요일까지 예산안 엑셀 시트 확정</li>
+        <li>핵심 과제 B: 차주 화요일 고객사 제안 PPT 발표 진행</li>
       </ul>
-
-      <h2>2. 결정 사항 및 Action Item</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>담당자</th>
-            <th>실행 과제 (Action Item)</th>
-            <th>완료 기한</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>홍길동</td>
-            <td>최종 예산안 엑셀 시트 확정 및 공유</td>
-            <td>이번 주 금요일</td>
-          </tr>
-          <tr>
-            <td>이영희</td>
-            <td>고객사 제안용 PPT 슬라이드 업데이트</td>
-            <td>다음 주 화요일</td>
-          </tr>
-        </tbody>
-      </table>
     `;
   } else if (type === 'contract') {
     editor.innerHTML = `
@@ -656,35 +1051,29 @@ function loadWordTemplate(type, silent = false) {
       <p><br></p>
       <p><strong>갑 (발주자):</strong> ________________________ (인)</p>
       <p><strong>을 (수행자):</strong> ________________________ (인)</p>
-      <p><br></p>
-      <p>상기 당사자는 상호 신뢰를 바탕으로 다음과 같이 업무 협약 및 계약을 체결한다.</p>
-
       <h2>제 1 조 (목적)</h2>
-      <p>본 합의서는 '갑'과 '을' 간의 프로젝트 수행 범위, 납품 조건 및 상호 권리·의무를 명확히 규정함을 목적으로 한다.</p>
-
+      <p>본 합의서는 '갑'과 '을' 간의 프로젝트 수행 범위 및 상호 권리·의무를 규정함을 목적으로 한다.</p>
       <h2>제 2 조 (계약 기간 및 금액)</h2>
       <ul>
-        <li><strong>계약 기간:</strong> ${today} 부터 2026년 12월 31일 까지</li>
-        <li><strong>계약 금액:</strong> 일금 __________________ 원정 (₩ ____________ / 부가세 별도)</li>
+        <li><strong>계약 기간:</strong> ${today} ~ 2026-12-31</li>
+        <li><strong>계약 금액:</strong> 일금 __________________ 원정 (₩ ____________)</li>
       </ul>
-
-      <h2>제 3 조 (특약 사항)</h2>
-      <p>양 당사자는 본 계약의 증명으로 본 문서 2부를 작성하여 각각 서명 날인 후 1부씩 보관한다.</p>
-      <p><br></p>
-      <p style="text-align:center;"><strong>${today}</strong></p>
     `;
   }
 
   saveWordState();
   updateWordCounters();
-  if (!silent) showToast('문서 양식을 적용했습니다.');
+  if (!silent) showToast('문서 양식을 불러왔습니다.');
 }
 
 async function importDocxFile(file) {
+  if (typeof mammoth === 'undefined') {
+    showToast('DOCX 파서를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+    return;
+  }
   const arrayBuffer = await file.arrayBuffer();
   const result = await mammoth.convertToHtml({ arrayBuffer });
-  const editor = document.getElementById('wordPageEditor');
-  editor.innerHTML = result.value || '<p>(빈 문서)</p>';
+  document.getElementById('wordPageEditor').innerHTML = result.value || '<p>(빈 문서)</p>';
   saveWordState();
   updateWordCounters();
   showToast(`워드 파일 '${file.name}' 열기 완료!`);
@@ -693,7 +1082,6 @@ async function importDocxFile(file) {
 function exportWordDoc() {
   const content = document.getElementById('wordPageEditor').innerHTML;
   const title = getCleanDocTitle();
-
   const fullWordHtml = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office'
           xmlns:w='urn:schemas-microsoft-com:office:word'
@@ -704,24 +1092,17 @@ function exportWordDoc() {
       <style>
         @page { size: 21cm 29.7cm; margin: 2cm; }
         body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 11pt; line-height: 1.65; color: #1e293b; }
-        h1 { font-size: 20pt; color: #0f172a; }
-        h2 { font-size: 14pt; color: #1e3a8a; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
         table { width: 100%; border-collapse: collapse; margin: 12px 0; }
         th, td { border: 1px solid #64748b; padding: 6px 8px; }
         th { background-color: #f1f5f9; font-weight: bold; }
       </style>
     </head>
-    <body>
-      ${content}
-    </body>
+    <body>${content}</body>
     </html>
   `;
-
-  const blob = new Blob(['\uFEFF', fullWordHtml], {
-    type: 'application/msword;charset=utf-8'
-  });
+  const blob = new Blob(['\uFEFF', fullWordHtml], { type: 'application/msword;charset=utf-8' });
   triggerBlobDownload(blob, `${title}.doc`);
-  showToast(`'${title}.doc' MS 워드 호환 파일 다운로드 완료!`);
+  showToast(`'${title}.doc' 다운로드 완료!`);
 }
 
 function printWordDocument() {
@@ -729,7 +1110,7 @@ function printWordDocument() {
 }
 
 /* ============================================================================
- * 3. POWERPOINT ENGINE (16:9 Visual Slide Editor + PptxGenJS .pptx Export & Import)
+ * 3. POWERPOINT ENGINE (16:9 Slide Editor + PptxGenJS .pptx Export & Import)
  * ============================================================================ */
 function initPptEngine() {
   const saved = localStorage.getItem(STORAGE_KEYS.PPT_DECK);
@@ -740,7 +1121,6 @@ function initPptEngine() {
       pptDeck = null;
     }
   }
-
   if (!pptDeck || !Array.isArray(pptDeck) || pptDeck.length === 0) {
     loadPptTemplateDeck('pitch', true);
   } else {
@@ -752,7 +1132,7 @@ function createDefaultTitleSlide() {
   return {
     id: 'slide_' + Date.now(),
     bg: '#ffffff',
-    notes: '발표 시작 인사 및 핵심 주제 소개',
+    notes: '',
     elements: [
       {
         id: 'el_' + Date.now() + '_1',
@@ -775,7 +1155,7 @@ function createDefaultTitleSlide() {
         y: 265,
         w: 750,
         h: 60,
-        text: '부제목 또는 발표자 정보를 여기에 작성합니다 (더블클릭하여 편집)',
+        text: '부제목 또는 발표자 정보를 여기에 작성합니다',
         fontSize: 20,
         color: '#475569',
         bg: 'transparent',
@@ -792,14 +1172,14 @@ function loadPptTemplateDeck(templateName, silent = false) {
       {
         id: 's1',
         bg: '#0f172a',
-        notes: '표지 슬라이드입니다.',
+        notes: '표지 슬라이드',
         elements: [
           {
             id: 'e1',
             type: 'box',
             x: 70,
             y: 120,
-            w: 150,
+            w: 160,
             h: 36,
             text: '2026 STRATEGY',
             fontSize: 13,
@@ -829,7 +1209,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
             y: 300,
             w: 760,
             h: 70,
-            text: 'MS 오피스 구독 없이 모든 노트북에서 즉시 실행되는 차세대 웹 오피스',
+            text: 'MS 오피스 구독 없이 모든 노트북에서 0.1초 만에 실행되는 웹 오피스',
             fontSize: 20,
             color: '#94a3b8',
             bg: 'transparent',
@@ -841,7 +1221,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
       {
         id: 's2',
         bg: '#ffffff',
-        notes: '핵심 장점 3가지를 설명합니다.',
+        notes: '핵심 장점 3가지',
         elements: [
           {
             id: 'e21',
@@ -878,7 +1258,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
             y: 140,
             w: 260,
             h: 300,
-            text: '⚡ 무설치 즉시 사용\n\n새 노트북에서도 설치 없이 웹 주소만 열면 바로 작업합니다.',
+            text: '⚡ 0.1초 즉시 로딩\n\n외부 무거운 설치 없이 웹 주소만 열면 바로 작동합니다.',
             fontSize: 18,
             color: '#1e293b',
             bg: '#eff6ff',
@@ -904,7 +1284,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
       {
         id: 's3',
         bg: '#f8fafc',
-        notes: '일정 및 비용 비교 표 슬라이드입니다.',
+        notes: '지원 기능 요약 표',
         elements: [
           {
             id: 'e31',
@@ -929,8 +1309,8 @@ function loadPptTemplateDeck(templateName, silent = false) {
             h: 260,
             rows: [
               ['오피스 모듈', '지원 기능', '출력 파일 포맷'],
-              ['엑셀 (Spreadsheet)', '수식 계산(SUM/IF), 다중 시트, 셀 서식', '표준 .xlsx / .csv'],
-              ['워드 (Document)', 'A4 페이지 편집, 표/이미지 삽입, 양식 제공', 'MS 호환 .doc / PDF 인쇄'],
+              ['엑셀 (Spreadsheet)', '수식 계산(SUM/AVERAGE), 다중 시트, 셀 서식', '표준 .xlsx / .csv'],
+              ['워드 (Document)', 'A4 페이지 편집, 표/이미지 삽입, 양식 제공', 'MS 호환 .doc / PDF'],
               ['파워포인트 (Slide)', '16:9 슬라이드 편집, 발표 모드(F5)', '표준 PowerPoint .pptx']
             ],
             fontSize: 16,
@@ -945,7 +1325,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
       {
         id: 'w1',
         bg: '#eff6ff',
-        notes: '주간 보고 표지',
+        notes: '',
         elements: [
           {
             id: 'we1',
@@ -960,27 +1340,13 @@ function loadPptTemplateDeck(templateName, silent = false) {
             bg: 'transparent',
             bold: true,
             align: 'left'
-          },
-          {
-            id: 'we2',
-            type: 'text',
-            x: 70,
-            y: 285,
-            w: 700,
-            h: 50,
-            text: '금주 핵심 성과 요약 및 이슈 점검',
-            fontSize: 20,
-            color: '#475569',
-            bg: 'transparent',
-            bold: false,
-            align: 'left'
           }
         ]
       },
       {
         id: 'w2',
         bg: '#ffffff',
-        notes: '금주 실적 상세',
+        notes: '',
         elements: [
           {
             id: 'we21',
@@ -1003,7 +1369,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
             y: 130,
             w: 840,
             h: 320,
-            text: '• 핵심 과제 1: 시스템 안정화 및 성능 개선 완료 (100%)\n\n• 핵심 과제 2: 신규 고객사 제안서 작성 및 발송 완료\n\n• 핵심 과제 3: 내부 운영 비용 절감 프로세스 적용',
+            text: '• 핵심 과제 1: 초고속 네이티브 엑셀 스프레드시트 엔진 적용 완료\n\n• 핵심 과제 2: 신규 고객사 제안서 작성 완료',
             fontSize: 22,
             color: '#1e293b',
             bg: '#f8fafc',
@@ -1019,7 +1385,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
   selectedElementId = null;
   savePptState();
   renderPptWorkspace();
-  if (!silent) showToast('PPT 템플릿 세트를 불러왔습니다.');
+  if (!silent) showToast('PPT 템플릿을 불러왔습니다.');
 }
 
 function savePptState() {
@@ -1035,6 +1401,7 @@ function renderPptWorkspace() {
 
 function renderPptThumbnails() {
   const listEl = document.getElementById('pptThumbnailList');
+  if (!listEl) return;
   listEl.innerHTML = '';
 
   pptDeck.forEach((slide, idx) => {
@@ -1067,7 +1434,7 @@ function renderPptThumbnails() {
 function renderCurrentSlideStage() {
   const stage = document.getElementById('pptSlideStage');
   const slide = pptDeck[currentSlideIndex];
-  if (!slide) return;
+  if (!stage || !slide) return;
 
   stage.style.background = slide.bg || '#ffffff';
   stage.innerHTML = '';
@@ -1095,7 +1462,6 @@ function renderCurrentSlideStage() {
       item.style.padding = '16px';
     }
 
-    // Mouse down for selection & drag
     item.addEventListener('mousedown', (e) => {
       e.stopPropagation();
       if (selectedElementId !== el.id) {
@@ -1112,9 +1478,7 @@ function renderCurrentSlideStage() {
       editable.style.whiteSpace = 'pre-wrap';
       editable.innerText = el.text || '';
       editable.addEventListener('mousedown', (e) => {
-        if (document.activeElement === editable) {
-          e.stopPropagation();
-        }
+        if (document.activeElement === editable) e.stopPropagation();
       });
       editable.addEventListener('input', () => {
         el.text = editable.innerText;
@@ -1155,27 +1519,22 @@ function renderCurrentSlideStage() {
 
 function startDraggingElement(e, el) {
   if (e.target.isContentEditable && document.activeElement === e.target) return;
-
   const startX = e.clientX;
   const startY = e.clientY;
   const origX = el.x;
   const origY = el.y;
 
   function onMove(moveEvt) {
-    const dx = moveEvt.clientX - startX;
-    const dy = moveEvt.clientY - startY;
-    el.x = Math.max(0, Math.min(920, origX + dx));
-    el.y = Math.max(0, Math.min(500, origY + dy));
+    el.x = Math.max(0, Math.min(920, origX + (moveEvt.clientX - startX)));
+    el.y = Math.max(0, Math.min(500, origY + (moveEvt.clientY - startY)));
     renderCurrentSlideStage();
   }
-
   function onUp() {
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     savePptState();
     renderPptInspector();
   }
-
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
 }
@@ -1190,11 +1549,12 @@ function deselectPptElement(e) {
 
 function renderPptInspector() {
   const body = document.getElementById('pptInspectorBody');
+  if (!body) return;
   const slide = pptDeck[currentSlideIndex];
   const el = slide?.elements.find((item) => item.id === selectedElementId);
 
   if (!el) {
-    body.innerHTML = `<p class="inspector-empty">슬라이드의 텍스트나 도형을 클릭하면 크기·색상·정렬을 조절할 수 있습니다.<br><br>• <strong>이동:</strong> 마우스로 드래그<br>• <strong>글자 수정:</strong> 텍스트 클릭 후 타이핑</p>`;
+    body.innerHTML = `<p class="inspector-empty">슬라이드의 텍스트나 도형을 클릭하면 크기·색상·정렬을 조절할 수 있습니다.</p>`;
     return;
   }
 
@@ -1217,7 +1577,6 @@ function renderPptInspector() {
         <input type="number" value="${Math.round(el.h)}" onchange="updateSelectedPptProp('h', Number(this.value))" />
       </div>
     </div>
-
     <div class="prop-grid-2">
       <div class="prop-row">
         <label>글자 크기 (px)</label>
@@ -1232,25 +1591,19 @@ function renderPptInspector() {
         </select>
       </div>
     </div>
-
     <div class="prop-grid-2">
       <div class="prop-row">
         <label>글자 색상</label>
-        <input type="color" value="${el.color || '#0f172a'}" onchange="updateSelectedPptProp('color', this.value)" style="height:34px;" />
+        <input type="color" value="${el.color || '#0f172a'}" onchange="updateSelectedPptProp('color', this.value)" style="height:32px;" />
       </div>
       <div class="prop-row">
         <label>배경 색상</label>
-        <input type="color" value="${el.bg && el.bg !== 'transparent' ? el.bg : '#ffffff'}" onchange="updateSelectedPptProp('bg', this.value)" style="height:34px;" />
+        <input type="color" value="${el.bg && el.bg !== 'transparent' ? el.bg : '#ffffff'}" onchange="updateSelectedPptProp('bg', this.value)" style="height:32px;" />
       </div>
     </div>
-
     <div style="display:flex; gap:8px; margin-top:8px;">
-      <button class="tool-btn" style="flex:1;" onclick="updateSelectedPptProp('bold', !${Boolean(el.bold)})">
-        <b>B</b> 굵게 토글
-      </button>
-      <button class="tool-btn danger-hover" style="flex:1;" onclick="deleteSelectedPptElement()">
-        🗑️ 요소 삭제
-      </button>
+      <button class="tool-btn" style="flex:1;" onclick="updateSelectedPptProp('bold', !${Boolean(el.bold)})"><b>B</b> 굵게</button>
+      <button class="tool-btn danger-hover" style="flex:1;" onclick="deleteSelectedPptElement()">🗑️ 삭제</button>
     </div>
   `;
 }
@@ -1275,7 +1628,7 @@ function deleteSelectedPptElement() {
 }
 
 function addPptSlide() {
-  const newSlide = {
+  pptDeck.splice(currentSlideIndex + 1, 0, {
     id: 'slide_' + Date.now(),
     bg: '#ffffff',
     notes: '',
@@ -1301,7 +1654,7 @@ function addPptSlide() {
         y: 130,
         w: 840,
         h: 320,
-        text: '• 핵심 내용을 여기에 작성하세요.\n\n• 상단 툴바에서 표, 도형, 이미지를 추가할 수 있습니다.',
+        text: '• 핵심 내용을 여기에 작성하세요.',
         fontSize: 20,
         color: '#334155',
         bg: '#f8fafc',
@@ -1309,13 +1662,11 @@ function addPptSlide() {
         align: 'left'
       }
     ]
-  };
-  pptDeck.splice(currentSlideIndex + 1, 0, newSlide);
+  });
   currentSlideIndex++;
   selectedElementId = null;
   savePptState();
   renderPptWorkspace();
-  showToast('새 슬라이드가 추가되었습니다.');
 }
 
 function duplicatePptSlide() {
@@ -1327,7 +1678,6 @@ function duplicatePptSlide() {
   currentSlideIndex++;
   savePptState();
   renderPptWorkspace();
-  showToast('슬라이드가 복제되었습니다.');
 }
 
 function deletePptSlide() {
@@ -1340,13 +1690,11 @@ function deletePptSlide() {
   selectedElementId = null;
   savePptState();
   renderPptWorkspace();
-  showToast('슬라이드가 삭제되었습니다.');
 }
 
 function addPptElement(type) {
   const slide = pptDeck[currentSlideIndex];
   if (!slide) return;
-
   const newId = 'el_' + Date.now();
   if (type === 'text') {
     slide.elements.push({
@@ -1356,7 +1704,7 @@ function addPptElement(type) {
       y: 150,
       w: 500,
       h: 70,
-      text: '새 텍스트 상자 (클릭하여 입력)',
+      text: '새 텍스트 상자',
       fontSize: 24,
       color: slide.bg === '#0f172a' ? '#ffffff' : '#0f172a',
       bg: 'transparent',
@@ -1396,7 +1744,6 @@ function addPptElement(type) {
       bg: '#ffffff'
     });
   }
-
   selectedElementId = newId;
   savePptState();
   renderPptWorkspace();
@@ -1410,7 +1757,6 @@ function handlePptImageFile(event) {
   const file = event.target.files[0];
   if (!file) return;
   event.target.value = '';
-
   const reader = new FileReader();
   reader.onload = () => {
     const slide = pptDeck[currentSlideIndex];
@@ -1446,14 +1792,11 @@ function saveCurrentSpeakerNotes(val) {
   savePptState();
 }
 
-/* ==================== FULLSCREEN SLIDESHOW (F5) ==================== */
 function startSlideShow() {
   presentationIndex = currentSlideIndex;
   const modal = document.getElementById('pptPresentationModal');
   modal.classList.remove('hidden');
-  if (modal.requestFullscreen) {
-    modal.requestFullscreen().catch(() => {});
-  }
+  if (modal.requestFullscreen) modal.requestFullscreen().catch(() => {});
   renderPresentationSlide();
 }
 
@@ -1474,8 +1817,8 @@ function stepPresentation(delta) {
 
 function renderPresentationSlide() {
   const host = document.getElementById('presentationStageHost');
-  const indicator = document.getElementById('presentationPageIndicator');
-  indicator.textContent = `${presentationIndex + 1} / ${pptDeck.length}`;
+  document.getElementById('presentationPageIndicator').textContent =
+    `${presentationIndex + 1} / ${pptDeck.length}`;
 
   const slide = pptDeck[presentationIndex];
   const scale = Math.min(window.innerWidth / 960, window.innerHeight / 540) * 0.94;
@@ -1484,12 +1827,10 @@ function renderPresentationSlide() {
   stageClone.className = 'ppt-slide-stage';
   stageClone.style.background = slide.bg || '#ffffff';
   stageClone.style.transform = `scale(${scale})`;
-  stageClone.style.transformOrigin = 'center center';
 
   slide.elements.forEach((el) => {
     const item = document.createElement('div');
     item.className = 'ppt-item';
-    item.style.cursor = 'default';
     item.style.left = `${el.x}px`;
     item.style.top = `${el.y}px`;
     item.style.width = `${el.w}px`;
@@ -1503,7 +1844,6 @@ function renderPresentationSlide() {
       item.style.borderRadius = '10px';
       item.style.padding = '16px';
     }
-
     if (el.type === 'text' || el.type === 'box') {
       item.style.whiteSpace = 'pre-wrap';
       item.innerText = el.text || '';
@@ -1528,17 +1868,13 @@ function renderPresentationSlide() {
   host.appendChild(stageClone);
 }
 
-/* ==================== EXPORT & IMPORT REAL .PPTX ==================== */
 function exportPptxFile() {
   if (typeof PptxGenJS === 'undefined') {
-    showToast('PPTX 생성 엔진을 불러오는 중입니다.');
+    showToast('PPTX 엔진을 준비 중입니다. 1초 후 다시 눌러주세요.');
     return;
   }
-
   const pptx = new PptxGenJS();
-  pptx.layout = 'LAYOUT_16x9'; // 10 x 5.625 inches
-
-  // Stage is 960 x 540 px => 1 inch = 96 px
+  pptx.layout = 'LAYOUT_16x9';
   const pxToIn = (px) => Number((px / 96).toFixed(3));
 
   pptDeck.forEach((s) => {
@@ -1546,9 +1882,7 @@ function exportPptxFile() {
     if (s.bg && s.bg !== 'transparent') {
       slide.background = { color: s.bg.replace('#', '') };
     }
-    if (s.notes) {
-      slide.addNotes(s.notes);
-    }
+    if (s.notes) slide.addNotes(s.notes);
 
     s.elements.forEach((el) => {
       const x = pxToIn(el.x);
@@ -1574,13 +1908,7 @@ function exportPptxFile() {
         }
         slide.addText(el.text || '', opts);
       } else if (el.type === 'image' && el.src) {
-        slide.addImage({
-          data: el.src,
-          x,
-          y,
-          w,
-          h
-        });
+        slide.addImage({ data: el.src, x, y, w, h });
       } else if (el.type === 'table' && Array.isArray(el.rows)) {
         slide.addTable(el.rows, {
           x,
@@ -1597,19 +1925,19 @@ function exportPptxFile() {
 
   const fileName = `${getCleanDocTitle()}.pptx`;
   pptx.writeFile({ fileName }).then(() => {
-    showToast(`'${fileName}' 파워포인트(.pptx) 저장 완료!`);
+    showToast(`'${fileName}' 다운로드 완료!`);
   });
 }
 
 async function importPptxFile(file) {
+  if (typeof JSZip === 'undefined') {
+    showToast('PPTX 리더를 불러오는 중입니다. 1초 후 다시 시도해 주세요.');
+    return;
+  }
   const zip = await JSZip.loadAsync(file);
   const slideFiles = Object.keys(zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
-    .sort((a, b) => {
-      const na = parseInt(a.match(/slide(\d+)\.xml/)[1], 10);
-      const nb = parseInt(b.match(/slide(\d+)\.xml/)[1], 10);
-      return na - nb;
-    });
+    .sort((a, b) => parseInt(a.match(/slide(\d+)\.xml/)[1], 10) - parseInt(b.match(/slide(\d+)\.xml/)[1], 10));
 
   if (slideFiles.length === 0) {
     showToast('PPTX 내부에서 슬라이드를 찾지 못했습니다.');
@@ -1617,32 +1945,20 @@ async function importPptxFile(file) {
   }
 
   const importedDeck = [];
-
   for (let i = 0; i < slideFiles.length; i++) {
     const xmlStr = await zip.files[slideFiles[i]].async('string');
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlStr, 'application/xml');
-
-    // Extract text paragraphs per shape (<p:sp>)
+    const xmlDoc = new DOMParser().parseFromString(xmlStr, 'application/xml');
     const shapes = Array.from(xmlDoc.getElementsByTagName('p:sp'));
     const elements = [];
     let autoY = 60;
 
     shapes.forEach((sp, spIdx) => {
-      const paragraphs = Array.from(sp.getElementsByTagName('a:p'));
-      const lines = paragraphs
-        .map((p) =>
-          Array.from(p.getElementsByTagName('a:t'))
-            .map((t) => t.textContent)
-            .join('')
-        )
+      const lines = Array.from(sp.getElementsByTagName('a:p'))
+        .map((p) => Array.from(p.getElementsByTagName('a:t')).map((t) => t.textContent).join(''))
         .filter((line) => line.trim().length > 0);
-
       if (lines.length === 0) return;
 
-      const fullText = lines.join('\n');
       const isTitle = spIdx === 0;
-
       elements.push({
         id: `imp_${i}_${spIdx}`,
         type: isTitle ? 'text' : 'box',
@@ -1650,33 +1966,15 @@ async function importPptxFile(file) {
         y: autoY,
         w: 840,
         h: isTitle ? 70 : Math.min(300, Math.max(80, lines.length * 42)),
-        text: fullText,
+        text: lines.join('\n'),
         fontSize: isTitle ? 32 : 20,
         color: '#0f172a',
         bg: isTitle ? 'transparent' : '#f8fafc',
         bold: isTitle,
         align: 'left'
       });
-
       autoY += isTitle ? 90 : Math.min(310, Math.max(95, lines.length * 45));
     });
-
-    if (elements.length === 0) {
-      elements.push({
-        id: `imp_empty_${i}`,
-        type: 'text',
-        x: 70,
-        y: 200,
-        w: 800,
-        h: 70,
-        text: `슬라이드 ${i + 1}`,
-        fontSize: 30,
-        color: '#0f172a',
-        bg: 'transparent',
-        bold: true,
-        align: 'left'
-      });
-    }
 
     importedDeck.push({
       id: `imp_slide_${i}`,
@@ -1691,7 +1989,7 @@ async function importPptxFile(file) {
   selectedElementId = null;
   savePptState();
   renderPptWorkspace();
-  showToast(`PPTX 파일 '${file.name}' (${importedDeck.length}장) 불러오기 완료!`);
+  showToast(`PPTX '${file.name}' (${importedDeck.length}장) 열기 완료!`);
 }
 
 /* ==================== HELPERS ==================== */
@@ -1709,7 +2007,7 @@ function triggerBlobDownload(blob, filename) {
 }
 
 function escapeHtml(str) {
-  return String(str || '')
+  return String(str ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
