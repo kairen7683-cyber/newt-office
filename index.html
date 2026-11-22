@@ -3,112 +3,761 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NEWT Web Office — 초고속 Excel · Word · PPT 통합 웹 오피스</title>
+  <title>Microsoft 365 스타일 웹 오피스 — Excel · Word · PowerPoint</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <!-- Top App Bar -->
-  <header class="top-header">
-    <div class="brand-area">
-      <div class="brand-logo" id="brandBadge">X</div>
-      <div class="brand-info">
-        <div class="brand-title-row">
-          <span class="app-suite-name">NEWT Web Office</span>
-          <input type="text" id="docTitleInput" class="doc-title-input" value="월간예산_가계부" title="파일명 편집" />
-          <span class="save-badge" id="autoSaveBadge">⚡ 즉시 실행됨</span>
-        </div>
+<body class="theme-excel">
+
+  <!-- ==================== 1. MS OFFICE TITLE BAR ==================== -->
+  <header class="ms-titlebar">
+    <!-- Left: App Launcher (Waffle) + Quick Access Toolbar -->
+    <div class="titlebar-left">
+      <button class="waffle-btn" onclick="toggleWaffleMenu(event)" title="오피스 앱 전환기 (Excel · Word · PowerPoint)">
+        <span class="waffle-grid">
+          <i></i><i></i><i></i>
+          <i></i><i></i><i></i>
+          <i></i><i></i><i></i>
+        </span>
+      </button>
+
+      <div class="app-brand-pill" id="msAppBrandName">Excel</div>
+
+      <div class="qat-divider"></div>
+
+      <!-- Quick Access Toolbar -->
+      <div class="qat-group">
+        <label class="qat-autosave" title="브라우저 자동 저장 활성화됨">
+          <span>자동 저장</span>
+          <span class="toggle-pill on"><i></i></span>
+        </label>
+        <button class="qat-btn" onclick="downloadCurrentDocument()" title="내 PC에 파일 저장 (Ctrl+S)">💾</button>
+        <button class="qat-btn" onclick="triggerGlobalFileOpen()" title="내 PC의 파일 열기 (Ctrl+O)">📂</button>
+        <button class="qat-btn" onclick="handleUndo()" title="실행 취소 (Ctrl+Z)">↩</button>
+        <button class="qat-btn" onclick="handleRedo()" title="다시 실행 (Ctrl+Y)">↪</button>
       </div>
     </div>
 
-    <!-- App Switcher Tabs (Excel / Word / PPT) -->
-    <nav class="suite-tabs">
-      <button class="suite-tab active" data-mode="excel" onclick="switchOfficeMode('excel')">
-        <span class="tab-dot excel-dot">X</span>
-        <span>엑셀 (Excel)</span>
-      </button>
-      <button class="suite-tab" data-mode="word" onclick="switchOfficeMode('word')">
-        <span class="tab-dot word-dot">W</span>
-        <span>워드 (Word)</span>
-      </button>
-      <button class="suite-tab" data-mode="ppt" onclick="switchOfficeMode('ppt')">
-        <span class="tab-dot ppt-dot">P</span>
-        <span>파워포인트 (PPT)</span>
-      </button>
-    </nav>
+    <!-- Center: Document Title & Search Box -->
+    <div class="titlebar-center">
+      <div class="doc-title-wrapper">
+        <input type="text" id="docTitleInput" class="ms-doc-title" value="2026_월간예산_가계부" title="클릭하여 파일 이름 변경" />
+        <span class="doc-ext-badge" id="docExtBadge">.xlsx</span>
+        <span class="saved-status-text" id="autoSaveBadge">· 저장됨</span>
+      </div>
+    </div>
 
-    <!-- Global Action Buttons -->
-    <div class="top-actions">
-      <label class="action-btn outline-btn" for="globalFileInput" title="내 PC의 파일 열기 (.xlsx, .xls, .csv, .docx, .doc, .txt, .pptx)">
-        <span>📂 파일 열기</span>
-      </label>
-      <input type="file" id="globalFileInput" hidden accept=".xlsx,.xls,.csv,.docx,.doc,.html,.txt,.pptx,.json" />
+    <!-- Right: Direct App Switcher & Share/Download -->
+    <div class="titlebar-right">
+      <div class="direct-app-switcher">
+        <button class="app-switch-chip active" data-mode="excel" onclick="switchOfficeMode('excel')">
+          <span class="chip-icon excel-bg">X</span> Excel
+        </button>
+        <button class="app-switch-chip" data-mode="word" onclick="switchOfficeMode('word')">
+          <span class="chip-icon word-bg">W</span> Word
+        </button>
+        <button class="app-switch-chip" data-mode="ppt" onclick="switchOfficeMode('ppt')">
+          <span class="chip-icon ppt-bg">P</span> PowerPoint
+        </button>
+      </div>
 
-      <button class="action-btn outline-btn" onclick="createNewDocument()" title="새 문서 만들기">
-        <span>📄 새로 만들기</span>
-      </button>
-
-      <button class="action-btn primary-btn" id="primaryDownloadBtn" onclick="downloadCurrentDocument()">
-        <span id="downloadBtnLabel">💾 .xlsx 다운로드</span>
+      <button class="ms-download-cta" id="primaryDownloadBtn" onclick="downloadCurrentDocument()">
+        <span id="downloadBtnLabel">⬇ .xlsx 저장</span>
       </button>
     </div>
   </header>
 
-  <!-- Main Workspace Container -->
-  <main class="workspace-container">
+  <!-- Waffle App Launcher Dropdown -->
+  <div id="waffleDropdown" class="waffle-dropdown hidden">
+    <div class="waffle-title">오피스 앱 전환</div>
+    <div class="waffle-apps">
+      <button class="waffle-item" onclick="switchOfficeMode('excel'); closeWaffleMenu();">
+        <div class="waffle-icon excel-bg">X</div>
+        <div class="waffle-meta">
+          <strong>Excel</strong>
+          <span>스프레드시트 (.xlsx)</span>
+        </div>
+      </button>
+      <button class="waffle-item" onclick="switchOfficeMode('word'); closeWaffleMenu();">
+        <div class="waffle-icon word-bg">W</div>
+        <div class="waffle-meta">
+          <strong>Word</strong>
+          <span>워드 문서 (.docx / .doc)</span>
+        </div>
+      </button>
+      <button class="waffle-item" onclick="switchOfficeMode('ppt'); closeWaffleMenu();">
+        <div class="waffle-icon ppt-bg">P</div>
+        <div class="waffle-meta">
+          <strong>PowerPoint</strong>
+          <span>프레젠테이션 (.pptx)</span>
+        </div>
+      </button>
+    </div>
+    <div class="waffle-footer">
+      <button class="waffle-file-btn" onclick="triggerGlobalFileOpen(); closeWaffleMenu();">📂 내 컴퓨터에서 파일 열기...</button>
+    </div>
+  </div>
 
-    <!-- ==================== 1. EXCEL VIEW (NATIVE INSTANT ENGINE) ==================== -->
-    <section id="view-excel" class="office-view active">
-      <!-- Excel Ribbon Toolbar -->
-      <div class="sub-toolbar excel-toolbar">
-        <div class="toolbar-group">
-          <span class="mode-pill excel-pill">Excel</span>
-          <button class="icon-tool-btn" onclick="formatSelectedExcelCells('bold')" title="굵게 (Ctrl+B)"><b>B</b></button>
-          <button class="icon-tool-btn" onclick="formatSelectedExcelCells('align', 'left')" title="왼쪽 정렬">⬅</button>
-          <button class="icon-tool-btn" onclick="formatSelectedExcelCells('align', 'center')" title="가운데 정렬">↔</button>
-          <button class="icon-tool-btn" onclick="formatSelectedExcelCells('align', 'right')" title="오른쪽 정렬">➡</button>
-          <label class="color-picker-label" title="글자 색상">
-            <span>글자</span>
-            <input type="color" value="#0f172a" onchange="formatSelectedExcelCells('color', this.value)" />
-          </label>
-          <label class="color-picker-label" title="셀 배경색">
-            <span>배경</span>
-            <input type="color" value="#ecfdf5" onchange="formatSelectedExcelCells('bg', this.value)" />
-          </label>
-          <button class="tool-btn" onclick="formatSelectedExcelCells('comma')" title="천단위 콤마 표시">1,000</button>
+  <!-- Hidden File Inputs -->
+  <input type="file" id="globalFileInput" hidden accept=".xlsx,.xls,.csv,.docx,.doc,.html,.txt,.pptx,.json" />
+  <input type="file" id="pptImgInput" hidden accept="image/*" onchange="handlePptImageFile(event)" />
+
+  <!-- ==================== 2. MS OFFICE RIBBON MENU BAR ==================== -->
+  <section class="ms-ribbon-shell">
+    <!-- Ribbon Tab Strip (파일 / 홈 / 삽입 / 레이아웃 / 수식·슬라이드쇼 / 샘플양식) -->
+    <div class="ribbon-tab-strip">
+      <button class="ribbon-file-tab" onclick="openFileBackstage()">파일</button>
+      <button class="ribbon-tab active" data-rtab="home" onclick="switchRibbonTab('home')">홈</button>
+      <button class="ribbon-tab" data-rtab="insert" onclick="switchRibbonTab('insert')">삽입</button>
+      <button class="ribbon-tab" data-rtab="layout" onclick="switchRibbonTab('layout')" id="layoutTabLabel">페이지 레이아웃</button>
+      <button class="ribbon-tab" data-rtab="special" onclick="switchRibbonTab('special')" id="specialTabLabel">수식 및 데이터</button>
+      <button class="ribbon-tab" data-rtab="templates" onclick="switchRibbonTab('templates')">✨ 실무 양식 모음</button>
+
+      <div class="ribbon-right-actions">
+        <button class="ribbon-quick-btn" onclick="triggerGlobalFileOpen()">📂 파일 열기</button>
+        <button class="ribbon-quick-btn" onclick="createNewDocument()">📄 새 문서</button>
+      </div>
+    </div>
+
+    <!-- Ribbon Deck (Changes based on Current App + Active Ribbon Tab) -->
+    <div class="ribbon-deck" id="ribbonDeck">
+
+      <!-- ==================== [EXCEL RIBBON PANELS] ==================== -->
+      <div class="app-ribbon-group active" data-app-ribbon="excel">
+
+        <!-- EXCEL > HOME TAB -->
+        <div class="ribbon-panel active" data-rpanel="home">
+          <!-- 클립보드 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="pasteExcelCell()" title="붙여넣기 (Ctrl+V)">
+                <span class="r-big-icon">📋</span>
+                <span>붙여넣기</span>
+              </button>
+              <div class="r-stack">
+                <button class="r-small-row-btn" onclick="cutExcelCell()">✂ 잘라내기</button>
+                <button class="r-small-row-btn" onclick="copyExcelCell()">📄 복사</button>
+              </div>
+            </div>
+            <div class="r-group-title">클립보드</div>
+          </div>
+
+          <!-- 글꼴 -->
+          <div class="r-group">
+            <div class="r-controls-col">
+              <div class="r-row">
+                <select class="r-select font-select" onchange="formatSelectedExcelCells('font', this.value)">
+                  <option value="'Malgun Gothic', sans-serif">맑은 고딕</option>
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="'Batang', serif">바탕</option>
+                  <option value="Consolas, monospace">Consolas</option>
+                </select>
+                <select class="r-select size-select" onchange="formatSelectedExcelCells('fontSize', this.value)">
+                  <option value="11px">10</option>
+                  <option value="12.5px" selected>11</option>
+                  <option value="14px">12</option>
+                  <option value="16px">14</option>
+                  <option value="18px">16</option>
+                  <option value="22px">20</option>
+                </select>
+              </div>
+              <div class="r-row">
+                <button class="r-icon-btn" onclick="formatSelectedExcelCells('bold')" title="굵게 (Ctrl+B)"><b>가</b></button>
+                <button class="r-icon-btn" onclick="formatSelectedExcelCells('italic')" title="기울임꼴 (Ctrl+I)"><i>가</i></button>
+                <button class="r-icon-btn" onclick="formatSelectedExcelCells('underline')" title="밑줄 (Ctrl+U)"><u>가</u></button>
+                <span class="r-mini-sep"></span>
+                <button class="r-icon-btn" onclick="formatSelectedExcelCells('border')" title="모든 테두리">⊞</button>
+                <label class="r-color-btn" title="채우기 색 (셀 배경)">
+                  <span class="r-color-glyph">🪣</span>
+                  <input type="color" value="#fff2cc" onchange="formatSelectedExcelCells('bg', this.value)" />
+                </label>
+                <label class="r-color-btn" title="글자 색">
+                  <span class="r-color-glyph" style="font-weight:800;color:#c00000;">A</span>
+                  <input type="color" value="#c00000" onchange="formatSelectedExcelCells('color', this.value)" />
+                </label>
+              </div>
+            </div>
+            <div class="r-group-title">글꼴</div>
+          </div>
+
+          <!-- 맞춤 -->
+          <div class="r-group">
+            <div class="r-controls-col">
+              <div class="r-row">
+                <button class="r-icon-btn" onclick="formatSelectedExcelCells('align', 'left')" title="왼쪽 맞춤">⫷</button>
+                <button class="r-icon-btn" onclick="formatSelectedExcelCells('align', 'center')" title="가운데 맞춤">⫸</button>
+                <button class="r-icon-btn" onclick="formatSelectedExcelCells('align', 'right')" title="오른쪽 맞춤">⫹</button>
+              </div>
+              <div class="r-row">
+                <button class="r-wide-btn" onclick="formatSelectedExcelCells('bg', '#d9ead3')">🟩 강조 셀 스타일</button>
+                <button class="r-wide-btn" onclick="formatSelectedExcelCells('clearStyle')">지우기</button>
+              </div>
+            </div>
+            <div class="r-group-title">맞춤</div>
+          </div>
+
+          <!-- 표시 형식 -->
+          <div class="r-group">
+            <div class="r-controls-col">
+              <div class="r-row">
+                <select class="r-select" style="width:128px;" onchange="applyExcelNumberPreset(this.value)">
+                  <option value="general">일반 / 숫자</option>
+                  <option value="currency">회계 / 통화 (₩)</option>
+                  <option value="percent">백분율 (%)</option>
+                  <option value="plain">쉼표 없음</option>
+                </select>
+              </div>
+              <div class="r-row">
+                <button class="r-icon-btn" onclick="applyExcelNumberPreset('currency')" title="회계 표시 형식 (₩)">₩</button>
+                <button class="r-icon-btn" onclick="applyExcelNumberPreset('percent')" title="백분율 스타일 (%)">%</button>
+                <button class="r-icon-btn" onclick="formatSelectedExcelCells('comma')" title="쉼표 스타일 (천 단위 구분)"><b>,</b></button>
+              </div>
+            </div>
+            <div class="r-group-title">표시 형식</div>
+          </div>
+
+          <!-- 셀 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="insertExcelRowAtCursor()">
+                <span class="r-big-icon">➕</span>
+                <span>행 삽입</span>
+              </button>
+              <button class="r-big-btn" onclick="insertExcelColAtCursor()">
+                <span class="r-big-icon">⫾</span>
+                <span>열 삽입</span>
+              </button>
+              <button class="r-big-btn" onclick="deleteExcelRowAtCursor()">
+                <span class="r-big-icon">🗑️</span>
+                <span>행 삭제</span>
+              </button>
+            </div>
+            <div class="r-group-title">셀</div>
+          </div>
+
+          <!-- 편집 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="insertExcelFunction('SUM')" title="위쪽 숫자 자동 합계">
+                <span class="r-big-icon" style="color:#217346;font-weight:900;">Σ</span>
+                <span>자동 합계</span>
+              </button>
+              <div class="r-stack">
+                <button class="r-small-row-btn" onclick="insertExcelFunction('AVERAGE')">평균 (AVERAGE)</button>
+                <button class="r-small-row-btn" onclick="sortExcelColumn('asc')">🔼 오름차순 정렬</button>
+              </div>
+              <button class="r-big-btn highlight-save-big" onclick="exportExcelXLSX()">
+                <span class="r-big-icon">💾</span>
+                <span>.xlsx 저장</span>
+              </button>
+            </div>
+            <div class="r-group-title">편집 및 저장</div>
+          </div>
         </div>
 
-        <div class="toolbar-divider"></div>
-
-        <div class="toolbar-group">
-          <button class="tool-btn" onclick="insertExcelFunction('SUM')">Σ 자동합계(SUM)</button>
-          <button class="tool-btn" onclick="insertExcelFunction('AVERAGE')">평균(AVG)</button>
-          <button class="tool-btn" onclick="addExcelRows(10)">+ 행 추가</button>
-          <button class="tool-btn" onclick="addExcelCols(5)">+ 열 추가</button>
+        <!-- EXCEL > INSERT TAB -->
+        <div class="ribbon-panel" data-rpanel="insert">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="addNewExcelSheet()">
+                <span class="r-big-icon">📑</span>
+                <span>새 시트</span>
+              </button>
+              <button class="r-big-btn" onclick="addExcelRows(10)">
+                <span class="r-big-icon">⬇</span>
+                <span>10행 추가</span>
+              </button>
+              <button class="r-big-btn" onclick="addExcelCols(5)">
+                <span class="r-big-icon">➡</span>
+                <span>5열 추가</span>
+              </button>
+            </div>
+            <div class="r-group-title">시트 및 표 확장</div>
+          </div>
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="insertTodayInExcel()">
+                <span class="r-big-icon">📅</span>
+                <span>오늘 날짜</span>
+              </button>
+            </div>
+            <div class="r-group-title">날짜/시간</div>
+          </div>
         </div>
 
-        <div class="toolbar-divider"></div>
-
-        <div class="toolbar-group">
-          <button class="tool-btn" onclick="loadExcelSample('budget')">📊 가계부 샘플</button>
-          <button class="tool-btn" onclick="loadExcelSample('invoice')">🧾 거래명세서</button>
-          <button class="tool-btn" onclick="loadExcelSample('calc')">🧮 복리수익 계산표</button>
+        <!-- EXCEL > LAYOUT TAB -->
+        <div class="ribbon-panel" data-rpanel="layout">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="toggleExcelGridlines()">
+                <span class="r-big-icon">▦</span>
+                <span>눈금선 표시</span>
+              </button>
+              <button class="r-big-btn" onclick="window.print()">
+                <span class="r-big-icon">🖨️</span>
+                <span>시트 인쇄</span>
+              </button>
+            </div>
+            <div class="r-group-title">시트 옵션</div>
+          </div>
         </div>
 
-        <div class="toolbar-group" style="margin-left:auto;">
-          <button class="tool-btn" onclick="exportExcelCSV()">📄 CSV 저장</button>
-          <button class="tool-btn highlight-excel" onclick="exportExcelXLSX()">💾 엑셀(.xlsx) 저장</button>
+        <!-- EXCEL > FORMULAS TAB -->
+        <div class="ribbon-panel" data-rpanel="special">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="insertExcelFunction('SUM')">
+                <span class="r-big-icon">Σ</span>
+                <span>SUM 합계</span>
+              </button>
+              <button class="r-big-btn" onclick="insertExcelFunction('AVERAGE')">
+                <span class="r-big-icon">x̄</span>
+                <span>AVERAGE 평균</span>
+              </button>
+              <button class="r-big-btn" onclick="insertExcelFunction('MAX')">
+                <span class="r-big-icon">▲</span>
+                <span>MAX 최대값</span>
+              </button>
+              <button class="r-big-btn" onclick="insertExcelFunction('MIN')">
+                <span class="r-big-icon">▼</span>
+                <span>MIN 최소값</span>
+              </button>
+              <button class="r-big-btn" onclick="insertExcelFunction('COUNT')">
+                <span class="r-big-icon">#</span>
+                <span>COUNT 개수</span>
+              </button>
+            </div>
+            <div class="r-group-title">함수 라이브러리</div>
+          </div>
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="sortExcelColumn('asc')">
+                <span class="r-big-icon">🔼</span>
+                <span>정렬 (ㄱ→ㅎ)</span>
+              </button>
+              <button class="r-big-btn" onclick="sortExcelColumn('desc')">
+                <span class="r-big-icon">🔽</span>
+                <span>정렬 (ㅎ→ㄱ)</span>
+              </button>
+              <button class="r-big-btn" onclick="exportExcelCSV()">
+                <span class="r-big-icon">📄</span>
+                <span>CSV 내보내기</span>
+              </button>
+            </div>
+            <div class="r-group-title">데이터 도구</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== [WORD RIBBON PANELS] ==================== -->
+      <div class="app-ribbon-group" data-app-ribbon="word">
+
+        <!-- WORD > HOME TAB -->
+        <div class="ribbon-panel active" data-rpanel="home">
+          <!-- 클립보드 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="execWordCmd('paste')">
+                <span class="r-big-icon">📋</span>
+                <span>붙여넣기</span>
+              </button>
+              <div class="r-stack">
+                <button class="r-small-row-btn" onclick="execWordCmd('cut')">✂ 잘라내기</button>
+                <button class="r-small-row-btn" onclick="execWordCmd('copy')">📄 복사</button>
+              </div>
+            </div>
+            <div class="r-group-title">클립보드</div>
+          </div>
+
+          <!-- 글꼴 -->
+          <div class="r-group">
+            <div class="r-controls-col">
+              <div class="r-row">
+                <select id="wordFontFamily" class="r-select font-select" onchange="execWordCmd('fontName', this.value)">
+                  <option value="'Malgun Gothic', sans-serif">맑은 고딕</option>
+                  <option value="'Batang', serif">바탕체</option>
+                  <option value="'Gulim', sans-serif">굴림체</option>
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="'Times New Roman', serif">Times New Roman</option>
+                </select>
+                <select id="wordFontSize" class="r-select size-select" onchange="applyWordFontSize(this.value)">
+                  <option value="10pt">10</option>
+                  <option value="11pt" selected>11</option>
+                  <option value="12pt">12</option>
+                  <option value="14pt">14</option>
+                  <option value="16pt">16</option>
+                  <option value="18pt">18</option>
+                  <option value="24pt">24</option>
+                  <option value="32pt">32</option>
+                </select>
+              </div>
+              <div class="r-row">
+                <button class="r-icon-btn" onclick="execWordCmd('bold')" title="굵게 (Ctrl+B)"><b>가</b></button>
+                <button class="r-icon-btn" onclick="execWordCmd('italic')" title="기울임꼴 (Ctrl+I)"><i>가</i></button>
+                <button class="r-icon-btn" onclick="execWordCmd('underline')" title="밑줄 (Ctrl+U)"><u>가</u></button>
+                <button class="r-icon-btn" onclick="execWordCmd('strikeThrough')" title="취소선"><s>가</s></button>
+                <span class="r-mini-sep"></span>
+                <label class="r-color-btn" title="텍스트 강조 색 (형광펜)">
+                  <span class="r-color-glyph">🖍️</span>
+                  <input type="color" value="#fef08a" onchange="execWordCmd('hiliteColor', this.value)" />
+                </label>
+                <label class="r-color-btn" title="글자 색">
+                  <span class="r-color-glyph" style="font-weight:800;color:#2b579a;">A</span>
+                  <input type="color" value="#1e293b" onchange="execWordCmd('foreColor', this.value)" />
+                </label>
+              </div>
+            </div>
+            <div class="r-group-title">글꼴</div>
+          </div>
+
+          <!-- 단락 -->
+          <div class="r-group">
+            <div class="r-controls-col">
+              <div class="r-row">
+                <button class="r-icon-btn" onclick="execWordCmd('insertUnorderedList')" title="글머리 기호">•≡</button>
+                <button class="r-icon-btn" onclick="execWordCmd('insertOrderedList')" title="번호 매기기">1≡</button>
+                <span class="r-mini-sep"></span>
+                <button class="r-icon-btn" onclick="execWordCmd('indent')" title="들여쓰기">⇥</button>
+                <button class="r-icon-btn" onclick="execWordCmd('outdent')" title="내어쓰기">⇤</button>
+              </div>
+              <div class="r-row">
+                <button class="r-icon-btn" onclick="execWordCmd('justifyLeft')" title="왼쪽 맞춤">⫷</button>
+                <button class="r-icon-btn" onclick="execWordCmd('justifyCenter')" title="가운데 맞춤">⫸</button>
+                <button class="r-icon-btn" onclick="execWordCmd('justifyRight')" title="오른쪽 맞춤">⫹</button>
+                <button class="r-icon-btn" onclick="execWordCmd('justifyFull')" title="양쪽 맞춤">☰</button>
+              </div>
+            </div>
+            <div class="r-group-title">단락</div>
+          </div>
+
+          <!-- 스타일 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="word-style-gallery-btn" onclick="execWordCmd('formatBlock', 'P')">
+                <span style="font-size:13px;font-weight:600;">가나다</span>
+                <small>표준 본문</small>
+              </button>
+              <button class="word-style-gallery-btn" onclick="execWordCmd('formatBlock', 'H1')">
+                <span style="font-size:15px;font-weight:800;color:#1e3a8a;">제목 1</span>
+                <small>대제목</small>
+              </button>
+              <button class="word-style-gallery-btn" onclick="execWordCmd('formatBlock', 'H2')">
+                <span style="font-size:14px;font-weight:700;color:#2b579a;">제목 2</span>
+                <small>소제목</small>
+              </button>
+            </div>
+            <div class="r-group-title">스타일</div>
+          </div>
+
+          <!-- 저장 및 출력 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="printWordDocument()">
+                <span class="r-big-icon">🖨️</span>
+                <span>인쇄 / PDF</span>
+              </button>
+              <button class="r-big-btn highlight-save-big" onclick="exportWordDoc()">
+                <span class="r-big-icon">💾</span>
+                <span>.doc 저장</span>
+              </button>
+            </div>
+            <div class="r-group-title">내보내기</div>
+          </div>
+        </div>
+
+        <!-- WORD > INSERT TAB -->
+        <div class="ribbon-panel" data-rpanel="insert">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="insertWordTable()">
+                <span class="r-big-icon">📅</span>
+                <span>표 삽입</span>
+              </button>
+              <button class="r-big-btn" onclick="insertWordImage()">
+                <span class="r-big-icon">🖼️</span>
+                <span>그림 삽입</span>
+              </button>
+              <button class="r-big-btn" onclick="insertWordHR()">
+                <span class="r-big-icon">➖</span>
+                <span>가로 구분선</span>
+              </button>
+              <button class="r-big-btn" onclick="insertWordCalloutBox()">
+                <span class="r-big-icon">💬</span>
+                <span>강조 글상자</span>
+              </button>
+            </div>
+            <div class="r-group-title">표 및 일러스트레이션</div>
+          </div>
+        </div>
+
+        <!-- WORD > LAYOUT TAB -->
+        <div class="ribbon-panel" data-rpanel="layout">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="setWordPageMargin('normal')">
+                <span class="r-big-icon">📄</span>
+                <span>보통 여백</span>
+              </button>
+              <button class="r-big-btn" onclick="setWordPageMargin('narrow')">
+                <span class="r-big-icon">📃</span>
+                <span>좁은 여백</span>
+              </button>
+              <button class="r-big-btn" onclick="setWordPageOrientation('portrait')">
+                <span class="r-big-icon">▯</span>
+                <span>세로 방향</span>
+              </button>
+              <button class="r-big-btn" onclick="setWordPageOrientation('landscape')">
+                <span class="r-big-icon">▭</span>
+                <span>가로 방향</span>
+              </button>
+            </div>
+            <div class="r-group-title">페이지 설정</div>
+          </div>
+        </div>
+
+        <!-- WORD > SPECIAL TAB -->
+        <div class="ribbon-panel" data-rpanel="special">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="alertWordCountReport()">
+                <span class="r-big-icon">🔢</span>
+                <span>단어 수 통계</span>
+              </button>
+              <button class="r-big-btn" onclick="printWordDocument()">
+                <span class="r-big-icon">🖨️</span>
+                <span>PDF로 인쇄</span>
+              </button>
+            </div>
+            <div class="r-group-title">검토</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== [POWERPOINT RIBBON PANELS] ==================== -->
+      <div class="app-ribbon-group" data-app-ribbon="ppt">
+
+        <!-- PPT > HOME TAB -->
+        <div class="ribbon-panel active" data-rpanel="home">
+          <!-- 슬라이드 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="addPptSlide()">
+                <span class="r-big-icon">➕</span>
+                <span>새 슬라이드</span>
+              </button>
+              <div class="r-stack">
+                <button class="r-small-row-btn" onclick="duplicatePptSlide()">📋 슬라이드 복제</button>
+                <button class="r-small-row-btn" onclick="deletePptSlide()">🗑️ 슬라이드 삭제</button>
+              </div>
+            </div>
+            <div class="r-group-title">슬라이드</div>
+          </div>
+
+          <!-- 글꼴 (선택한 PPT 요소) -->
+          <div class="r-group">
+            <div class="r-controls-col">
+              <div class="r-row">
+                <button class="r-icon-btn" onclick="nudgeSelectedPptFontSize(4)" title="글자 크기 크게">A▲</button>
+                <button class="r-icon-btn" onclick="nudgeSelectedPptFontSize(-4)" title="글자 크기 작게">A▼</button>
+                <button class="r-icon-btn" onclick="toggleSelectedPptBold()" title="굵게"><b>가</b></button>
+                <span class="r-mini-sep"></span>
+                <button class="r-icon-btn" onclick="updateSelectedPptProp('align', 'left')" title="왼쪽 맞춤">⫷</button>
+                <button class="r-icon-btn" onclick="updateSelectedPptProp('align', 'center')" title="가운데 맞춤">⫸</button>
+                <button class="r-icon-btn" onclick="updateSelectedPptProp('align', 'right')" title="오른쪽 맞춤">⫹</button>
+              </div>
+              <div class="r-row">
+                <label class="r-color-btn" title="글자 색상">
+                  <span class="r-color-glyph" style="font-weight:800;color:#b7472a;">A</span>
+                  <input type="color" value="#0f172a" onchange="updateSelectedPptProp('color', this.value)" />
+                </label>
+                <label class="r-color-btn" title="도형 채우기 배경색">
+                  <span class="r-color-glyph">🪣</span>
+                  <input type="color" value="#eff6ff" onchange="updateSelectedPptProp('bg', this.value)" />
+                </label>
+                <button class="r-wide-btn" onclick="deleteSelectedPptElement()">🗑️ 선택 개체 삭제</button>
+              </div>
+            </div>
+            <div class="r-group-title">글꼴 및 도형 스타일</div>
+          </div>
+
+          <!-- 그리기 / 삽입 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="addPptElement('text')">
+                <span class="r-big-icon">🔤</span>
+                <span>텍스트 상자</span>
+              </button>
+              <button class="r-big-btn" onclick="addPptElement('box')">
+                <span class="r-big-icon">⬛</span>
+                <span>도형 / 카드</span>
+              </button>
+              <button class="r-big-btn" onclick="addPptElement('table')">
+                <span class="r-big-icon">📊</span>
+                <span>표 삽입</span>
+              </button>
+              <button class="r-big-btn" onclick="triggerPptImageUpload()">
+                <span class="r-big-icon">🖼️</span>
+                <span>그림 삽입</span>
+              </button>
+            </div>
+            <div class="r-group-title">개체 삽입</div>
+          </div>
+
+          <!-- 발표 및 저장 -->
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="startSlideShow()">
+                <span class="r-big-icon">▶️</span>
+                <span>슬라이드 쇼(F5)</span>
+              </button>
+              <button class="r-big-btn highlight-save-big" onclick="exportPptxFile()">
+                <span class="r-big-icon">💾</span>
+                <span>.pptx 저장</span>
+              </button>
+            </div>
+            <div class="r-group-title">발표 및 저장</div>
+          </div>
+        </div>
+
+        <!-- PPT > INSERT TAB -->
+        <div class="ribbon-panel" data-rpanel="insert">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="addPptSlide()">
+                <span class="r-big-icon">➕</span>
+                <span>새 슬라이드</span>
+              </button>
+              <button class="r-big-btn" onclick="addPptElement('text')">
+                <span class="r-big-icon">🔤</span>
+                <span>텍스트 상자</span>
+              </button>
+              <button class="r-big-btn" onclick="addPptElement('box')">
+                <span class="r-big-icon">🟦</span>
+                <span>사각형 도형</span>
+              </button>
+              <button class="r-big-btn" onclick="addPptElement('table')">
+                <span class="r-big-icon">📅</span>
+                <span>표</span>
+              </button>
+              <button class="r-big-btn" onclick="triggerPptImageUpload()">
+                <span class="r-big-icon">🖼️</span>
+                <span>이 기기의 그림</span>
+              </button>
+            </div>
+            <div class="r-group-title">슬라이드 및 개체</div>
+          </div>
+        </div>
+
+        <!-- PPT > DESIGN (LAYOUT) TAB -->
+        <div class="ribbon-panel" data-rpanel="layout">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="ppt-theme-swatch" style="background:#ffffff;color:#0f172a;" onclick="changeSlideBackground('#ffffff')">클린 화이트</button>
+              <button class="ppt-theme-swatch" style="background:#0f172a;color:#ffffff;" onclick="changeSlideBackground('#0f172a')">다크 네이비</button>
+              <button class="ppt-theme-swatch" style="background:#eff6ff;color:#1e3a8a;" onclick="changeSlideBackground('#eff6ff')">로열 블루</button>
+              <button class="ppt-theme-swatch" style="background:#ecfdf5;color:#065f46;" onclick="changeSlideBackground('#ecfdf5')">에메랄드</button>
+              <button class="ppt-theme-swatch" style="background:#fef2f2;color:#991b1b;" onclick="changeSlideBackground('#fef2f2')">코랄 레드</button>
+              <button class="ppt-theme-swatch" style="background:#f8fafc;color:#334155;" onclick="changeSlideBackground('#f8fafc')">소프트 그레이</button>
+            </div>
+            <div class="r-group-title">슬라이드 배경 테마</div>
+          </div>
+        </div>
+
+        <!-- PPT > SLIDESHOW (SPECIAL) TAB -->
+        <div class="ribbon-panel" data-rpanel="special">
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="currentSlideIndex=0; startSlideShow();">
+                <span class="r-big-icon">⏮️</span>
+                <span>처음부터 (F5)</span>
+              </button>
+              <button class="r-big-btn" onclick="startSlideShow()">
+                <span class="r-big-icon">▶️</span>
+                <span>현재 슬라이드부터</span>
+              </button>
+            </div>
+            <div class="r-group-title">슬라이드 쇼 시작</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== [SHARED TEMPLATES RIBBON PANEL] ==================== -->
+      <div class="ribbon-panel shared-templates-panel" data-rpanel="templates">
+        <div class="r-group">
+          <div class="r-controls">
+            <button class="r-big-btn" onclick="switchOfficeMode('excel'); loadExcelSample('budget'); switchRibbonTab('home');">
+              <span class="r-big-icon">📊</span>
+              <span>월간 가계부</span>
+            </button>
+            <button class="r-big-btn" onclick="switchOfficeMode('excel'); loadExcelSample('invoice'); switchRibbonTab('home');">
+              <span class="r-big-icon">🧾</span>
+              <span>거래명세서</span>
+            </button>
+            <button class="r-big-btn" onclick="switchOfficeMode('excel'); loadExcelSample('calc'); switchRibbonTab('home');">
+              <span class="r-big-icon">🧮</span>
+              <span>복리 수익표</span>
+            </button>
+          </div>
+          <div class="r-group-title">Excel 실무 서식</div>
+        </div>
+
+        <div class="r-group">
+          <div class="r-controls">
+            <button class="r-big-btn" onclick="switchOfficeMode('word'); loadWordTemplate('report'); switchRibbonTab('home');">
+              <span class="r-big-icon">📝</span>
+              <span>업무 보고서</span>
+            </button>
+            <button class="r-big-btn" onclick="switchOfficeMode('word'); loadWordTemplate('minutes'); switchRibbonTab('home');">
+              <span class="r-big-icon">📋</span>
+              <span>주간 회의록</span>
+            </button>
+            <button class="r-big-btn" onclick="switchOfficeMode('word'); loadWordTemplate('contract'); switchRibbonTab('home');">
+              <span class="r-big-icon">⚖️</span>
+              <span>표준 합의서</span>
+            </button>
+          </div>
+          <div class="r-group-title">Word 문서 서식</div>
+        </div>
+
+        <div class="r-group">
+          <div class="r-controls">
+            <button class="r-big-btn" onclick="switchOfficeMode('ppt'); loadPptTemplateDeck('pitch'); switchRibbonTab('home');">
+              <span class="r-big-icon">📽️</span>
+              <span>사업 제안서</span>
+            </button>
+            <button class="r-big-btn" onclick="switchOfficeMode('ppt'); loadPptTemplateDeck('weekly'); switchRibbonTab('home');">
+              <span class="r-big-icon">📈</span>
+              <span>주간 업무보고</span>
+            </button>
+          </div>
+          <div class="r-group-title">PowerPoint 템플릿</div>
         </div>
       </div>
 
-      <!-- Formula Bar (fx) -->
+    </div>
+  </section>
+
+  <!-- ==================== 3. MAIN WORKSPACE CONTAINER ==================== -->
+  <main class="workspace-container">
+
+    <!-- ==================== VIEW 1: MS EXCEL ==================== -->
+    <section id="view-excel" class="office-view active">
+      <!-- Authentic Excel Formula Bar -->
       <div class="excel-formula-bar">
-        <div id="excelCellAddressBox" class="cell-address-box">A1</div>
-        <div class="fx-label">fx</div>
+        <div id="excelCellAddressBox" class="cell-address-box" title="이름 상자 (선택된 셀 주소)">A1</div>
+        <div class="formula-grip-dots">⋮</div>
+        <div class="fx-btn-cluster">
+          <button class="fx-action-btn cancel" onclick="cancelFormulaBarEdit()" title="취소 (Esc)">✕</button>
+          <button class="fx-action-btn confirm" onclick="confirmFormulaBarEdit()" title="입력 (Enter)">✓</button>
+          <span class="fx-symbol" title="함수 삽입"><i>fx</i></span>
+        </div>
         <input
           type="text"
           id="excelFormulaInput"
           class="formula-input"
-          placeholder="값 또는 수식 입력 (예: =SUM(C2:C6), =C2-D2, =AVERAGE(B2:B10))"
+          placeholder="값 또는 수식 입력 (예: =SUM(C2:C7), =C2-D2, =AVERAGE(C2:C7))"
         />
       </div>
 
@@ -117,161 +766,156 @@
         <table id="excelGridTable" class="excel-grid-table"></table>
       </div>
 
-      <!-- Bottom Sheet Tabs & Summary Status Bar -->
+      <!-- Authentic Excel Bottom Sheet Tabs Bar -->
       <div class="excel-bottom-bar">
-        <div class="excel-sheet-tabs" id="excelSheetTabs"></div>
-        <button class="add-sheet-btn" onclick="addNewExcelSheet()" title="새 시트 추가">＋ 시트 추가</button>
-        <div class="excel-summary-stats" id="excelSummaryStats">
-          선택 셀: A1 | 합계: 0 | 평균: 0 | 개수: 0
+        <div class="sheet-nav-arrows">
+          <button onclick="cycleExcelSheet(-1)" title="이전 시트">◀</button>
+          <button onclick="cycleExcelSheet(1)" title="다음 시트">▶</button>
         </div>
+        <div class="excel-sheet-tabs" id="excelSheetTabs"></div>
+        <button class="add-sheet-circle-btn" onclick="addNewExcelSheet()" title="새 시트 추가">＋</button>
       </div>
     </section>
 
-    <!-- ==================== 2. WORD VIEW ==================== -->
+    <!-- ==================== VIEW 2: MS WORD ==================== -->
     <section id="view-word" class="office-view">
-      <div class="sub-toolbar word-toolbar">
-        <div class="toolbar-group">
-          <span class="mode-pill word-pill">Word</span>
-          <select id="wordFontFamily" class="tool-select" onchange="execWordCmd('fontName', this.value)">
-            <option value="'Malgun Gothic', sans-serif">맑은 고딕</option>
-            <option value="-apple-system, BlinkMacSystemFont, sans-serif">시스템 기본 고딕</option>
-            <option value="'Batang', serif">바탕체</option>
-            <option value="'Gulim', sans-serif">굴림체</option>
-            <option value="Arial, sans-serif">Arial</option>
-            <option value="'Times New Roman', serif">Times New Roman</option>
-          </select>
-          <select id="wordFontSize" class="tool-select" onchange="applyWordFontSize(this.value)">
-            <option value="10pt">10 pt</option>
-            <option value="11pt" selected>11 pt</option>
-            <option value="12pt">12 pt</option>
-            <option value="14pt">14 pt</option>
-            <option value="16pt">16 pt</option>
-            <option value="18pt">18 pt</option>
-            <option value="24pt">24 pt</option>
-            <option value="32pt">32 pt</option>
-          </select>
-        </div>
-
-        <div class="toolbar-divider"></div>
-
-        <div class="toolbar-group">
-          <button class="icon-tool-btn" onclick="execWordCmd('bold')" title="굵게 (Ctrl+B)"><b>B</b></button>
-          <button class="icon-tool-btn" onclick="execWordCmd('italic')" title="기울임 (Ctrl+I)"><i>I</i></button>
-          <button class="icon-tool-btn" onclick="execWordCmd('underline')" title="밑줄 (Ctrl+U)"><u>U</u></button>
-          <button class="icon-tool-btn" onclick="execWordCmd('strikeThrough')" title="취소선"><s>S</s></button>
-          <label class="color-picker-label" title="글자 색상">
-            <span>A</span>
-            <input type="color" value="#1e293b" onchange="execWordCmd('foreColor', this.value)" />
-          </label>
-          <label class="color-picker-label" title="형광펜 배경색">
-            <span>🖍️</span>
-            <input type="color" value="#fef08a" onchange="execWordCmd('hiliteColor', this.value)" />
-          </label>
-        </div>
-
-        <div class="toolbar-divider"></div>
-
-        <div class="toolbar-group">
-          <button class="icon-tool-btn" onclick="execWordCmd('justifyLeft')" title="왼쪽 정렬">⬅</button>
-          <button class="icon-tool-btn" onclick="execWordCmd('justifyCenter')" title="가운데 정렬">↔</button>
-          <button class="icon-tool-btn" onclick="execWordCmd('justifyRight')" title="오른쪽 정렬">➡</button>
-          <button class="icon-tool-btn" onclick="execWordCmd('insertUnorderedList')" title="글머리 기호">• 목록</button>
-          <button class="icon-tool-btn" onclick="execWordCmd('insertOrderedList')" title="번호 매기기">1. 목록</button>
-        </div>
-
-        <div class="toolbar-divider"></div>
-
-        <div class="toolbar-group">
-          <button class="tool-btn" onclick="insertWordTable()">📅 표 삽입</button>
-          <button class="tool-btn" onclick="insertWordImage()">🖼️ 이미지</button>
-          <button class="tool-btn" onclick="insertWordHR()">➖ 구분선</button>
-          <select class="tool-select" onchange="if(this.value){loadWordTemplate(this.value); this.value='';}">
-            <option value="">📋 문서 양식 불러오기...</option>
-            <option value="report">업무 보고서 / 기획서</option>
-            <option value="minutes">회의록 양식</option>
-            <option value="contract">표준 합의서 / 품의서</option>
-          </select>
-        </div>
-
-        <div class="toolbar-group" style="margin-left:auto;">
-          <button class="tool-btn" onclick="printWordDocument()">🖨️ 인쇄 / PDF</button>
-          <button class="tool-btn highlight-word" onclick="exportWordDoc()">💾 워드(.doc) 저장</button>
+      <!-- Authentic Word Horizontal Ruler -->
+      <div class="word-ruler-bar">
+        <div class="word-ruler-track">
+          <span class="ruler-margin-left"></span>
+          <i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>10</i><i>11</i><i>12</i><i>13</i><i>14</i><i>15</i><i>16</i>
+          <span class="ruler-margin-right"></span>
         </div>
       </div>
 
-      <div class="word-canvas-scroll">
-        <div class="word-status-strip">
-          <span id="wordCharCount">글자 수: 0자 (공백 제외 0자) · 단어: 0개</span>
-          <span>A4 표준 용지 규격 (210mm × 297mm)</span>
-        </div>
+      <div class="word-canvas-scroll" id="wordScrollContainer">
         <div id="wordPageEditor" class="word-a4-page" contenteditable="true" spellcheck="false"></div>
       </div>
     </section>
 
-    <!-- ==================== 3. POWERPOINT VIEW ==================== -->
+    <!-- ==================== VIEW 3: MS POWERPOINT ==================== -->
     <section id="view-ppt" class="office-view">
-      <div class="sub-toolbar ppt-toolbar">
-        <div class="toolbar-group">
-          <span class="mode-pill ppt-pill">PowerPoint</span>
-          <button class="tool-btn" onclick="addPptSlide()">➕ 슬라이드 추가</button>
-          <button class="tool-btn" onclick="duplicatePptSlide()">📋 슬라이드 복제</button>
-          <button class="tool-btn danger-hover" onclick="deletePptSlide()">🗑️ 슬라이드 삭제</button>
-        </div>
-
-        <div class="toolbar-divider"></div>
-
-        <div class="toolbar-group">
-          <button class="tool-btn" onclick="addPptElement('text')">🔤 텍스트 상자</button>
-          <button class="tool-btn" onclick="addPptElement('box')">⬛ 도형/카드</button>
-          <button class="tool-btn" onclick="addPptElement('table')">📊 표 추가</button>
-          <button class="tool-btn" onclick="triggerPptImageUpload()">🖼️ 이미지 삽입</button>
-          <input type="file" id="pptImgInput" hidden accept="image/*" onchange="handlePptImageFile(event)" />
-        </div>
-
-        <div class="toolbar-divider"></div>
-
-        <div class="toolbar-group">
-          <label class="tool-inline-label">배경 테마:</label>
-          <select id="pptBgThemeSelect" class="tool-select" onchange="changeSlideBackground(this.value)">
-            <option value="#ffffff">화이트 클린</option>
-            <option value="#0f172a">다크 네이비</option>
-            <option value="#f8fafc">소프트 그레이</option>
-            <option value="#eff6ff">스카이 블루</option>
-            <option value="#fef2f2">코랄 핑크</option>
-            <option value="#ecfdf5">민트 그린</option>
-          </select>
-          <select class="tool-select" onchange="if(this.value){loadPptTemplateDeck(this.value); this.value='';}">
-            <option value="">✨ PPT 템플릿 세트...</option>
-            <option value="pitch">사업계획서 / 제안서 (3장)</option>
-            <option value="weekly">주간 업무 보고 (2장)</option>
-          </select>
-        </div>
-
-        <div class="toolbar-group" style="margin-left:auto;">
-          <button class="tool-btn" onclick="startSlideShow()">▶️ 전체화면 발표(F5)</button>
-          <button class="tool-btn highlight-ppt" onclick="exportPptxFile()">💾 파워포인트(.pptx) 저장</button>
-        </div>
-      </div>
-
       <div class="ppt-workbench">
+        <!-- Left Slide Thumbnails (PowerPoint Style) -->
         <aside class="ppt-sidebar" id="pptThumbnailList"></aside>
-        <div class="ppt-stage-wrapper" onclick="deselectPptElement(event)">
-          <div id="pptSlideStage" class="ppt-slide-stage"></div>
-        </div>
-        <aside class="ppt-inspector">
-          <h3 class="inspector-title">요소 스타일 편집</h3>
-          <div id="pptInspectorBody" class="inspector-body">
-            <p class="inspector-empty">슬라이드의 텍스트나 도형을 클릭하면 크기·색상·정렬을 조절할 수 있습니다.</p>
+
+        <!-- Center Stage + Bottom Speaker Notes -->
+        <div class="ppt-center-column">
+          <div class="ppt-stage-wrapper" onclick="deselectPptElement(event)">
+            <div id="pptSlideStage" class="ppt-slide-stage"></div>
           </div>
-          <div class="speaker-notes-box">
-            <label>발표자 노트</label>
-            <textarea id="pptSpeakerNotes" placeholder="이 슬라이드의 발표자 메모를 입력하세요..." oninput="saveCurrentSpeakerNotes(this.value)"></textarea>
+          <div class="ppt-bottom-notes">
+            <span class="notes-label">📝 발표자 노트:</span>
+            <input
+              type="text"
+              id="pptSpeakerNotes"
+              placeholder="슬라이드에 발표자 노트를 추가하려면 여기를 클릭하세요..."
+              oninput="saveCurrentSpeakerNotes(this.value)"
+            />
+          </div>
+        </div>
+
+        <!-- Right Format Shape Task Pane -->
+        <aside class="ppt-inspector">
+          <div class="inspector-header">
+            <h3 class="inspector-title">도형 서식</h3>
+          </div>
+          <div id="pptInspectorBody" class="inspector-body">
+            <p class="inspector-empty">슬라이드의 텍스트나 도형을 클릭하면 크기·색상·정렬을 정밀하게 편집할 수 있습니다.</p>
           </div>
         </aside>
       </div>
     </section>
 
   </main>
+
+  <!-- ==================== 4. MS OFFICE AUTHENTIC STATUS BAR ==================== -->
+  <footer class="ms-statusbar">
+    <div class="statusbar-left">
+      <span id="statusReadyText" class="status-item">준비</span>
+      <span class="status-sep">|</span>
+      <span id="statusContextInfo" class="status-item">시트 1 / 1</span>
+    </div>
+
+    <div class="statusbar-right">
+      <span id="statusMetricsText" class="status-metrics">평균: 0 &nbsp;&nbsp; 개수: 0 &nbsp;&nbsp; 합계: 0</span>
+      <div class="zoom-controls">
+        <button class="zoom-btn" onclick="adjustWorkspaceZoom(-10)" title="축소">－</button>
+        <input
+          type="range"
+          id="workspaceZoomSlider"
+          min="60"
+          max="150"
+          step="10"
+          value="100"
+          oninput="setWorkspaceZoom(this.value)"
+        />
+        <button class="zoom-btn" onclick="adjustWorkspaceZoom(10)" title="확대">＋</button>
+        <span id="workspaceZoomLabel" class="zoom-pct" onclick="setWorkspaceZoom(100)" title="클릭하여 100%로 초기화">100%</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ==================== 5. FILE BACKSTAGE MODAL ("파일" 탭) ==================== -->
+  <div id="fileBackstageModal" class="backstage-modal hidden" onclick="if(event.target===this) closeFileBackstage();">
+    <div class="backstage-dialog">
+      <aside class="backstage-nav">
+        <button class="backstage-back-btn" onclick="closeFileBackstage()">← 뒤로</button>
+        <div class="backstage-menu-list">
+          <button class="bs-nav-item active" onclick="createNewDocument(); closeFileBackstage();">📄 새로 만들기</button>
+          <button class="bs-nav-item" onclick="triggerGlobalFileOpen(); closeFileBackstage();">📂 내 PC 파일 열기</button>
+          <button class="bs-nav-item" onclick="downloadCurrentDocument(); closeFileBackstage();">💾 다른 이름으로 저장</button>
+          <button class="bs-nav-item" onclick="window.print(); closeFileBackstage();">🖨️ 인쇄 / PDF 저장</button>
+        </div>
+      </aside>
+      <div class="backstage-content">
+        <h2>빠른 시작 및 문서 관리</h2>
+        <p class="bs-sub">MS 오피스 구독 없이 모든 노트북에서 표준 오피스 파일(.xlsx, .docx/.doc, .pptx)을 열고 저장할 수 있습니다.</p>
+
+        <div class="bs-card-grid">
+          <div class="bs-card" onclick="triggerGlobalFileOpen(); closeFileBackstage();">
+            <div class="bs-card-icon">📂</div>
+            <div>
+              <strong>컴퓨터에서 파일 열기</strong>
+              <p>엑셀(.xlsx, .csv), 워드(.docx, .doc), 파워포인트(.pptx) 불러오기</p>
+            </div>
+          </div>
+
+          <div class="bs-card" onclick="downloadCurrentDocument(); closeFileBackstage();">
+            <div class="bs-card-icon">💾</div>
+            <div>
+              <strong>현재 문서 PC로 다운로드</strong>
+              <p>작업 중인 문서를 표준 오피스 포맷으로 즉시 저장</p>
+            </div>
+          </div>
+
+          <div class="bs-card" onclick="switchOfficeMode('excel'); loadExcelSample('budget'); closeFileBackstage();">
+            <div class="bs-card-icon excel-text">📊</div>
+            <div>
+              <strong>Excel 가계부 / 예산안 서식</strong>
+              <p>자동 수식이 포함된 월간 예산 시트 열기</p>
+            </div>
+          </div>
+
+          <div class="bs-card" onclick="switchOfficeMode('word'); loadWordTemplate('report'); closeFileBackstage();">
+            <div class="bs-card-icon word-text">📝</div>
+            <div>
+              <strong>Word 업무 기획 보고서</strong>
+              <p>A4 표준 표와 제목 스타일이 적용된 보고서</p>
+            </div>
+          </div>
+
+          <div class="bs-card" onclick="switchOfficeMode('ppt'); loadPptTemplateDeck('pitch'); closeFileBackstage();">
+            <div class="bs-card-icon ppt-text">📽️</div>
+            <div>
+              <strong>PowerPoint 사업 제안서</strong>
+              <p>16:9 와이드 슬라이드 템플릿 3장 세트</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Fullscreen Presentation Modal -->
   <div id="pptPresentationModal" class="presentation-modal hidden">
@@ -287,10 +931,10 @@
   <!-- Toast Notification -->
   <div id="officeToast" class="office-toast hidden"></div>
 
-  <!-- Main Instant App Script (Loads Immediately without Blocking) -->
+  <!-- Main Instant App Script -->
   <script src="app.js"></script>
 
-  <!-- Non-blocking Background Libraries for .xlsx / .docx / .pptx File Export & Import -->
+  <!-- Non-blocking Background Parsers for .xlsx / .docx / .pptx -->
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>

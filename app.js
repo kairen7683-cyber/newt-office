@@ -1,9 +1,11 @@
 /* ============================================================================
- * NEWT Web Office — Instant Native Excel · Word · PowerPoint Suite
- * 0ms Render Engine (No heavy external grid libraries)
+ * Microsoft 365 Authentic Web Office Suite — Excel · Word · PowerPoint
+ * Instant Native 0ms Render Engine + Ribbon Commands + Status Bar
  * ============================================================================ */
 
 let currentMode = 'excel'; // 'excel' | 'word' | 'ppt'
+let activeRibbonTab = 'home'; // 'home' | 'insert' | 'layout' | 'special' | 'templates'
+let workspaceZoom = 100;
 
 // ==================== EXCEL STATE ====================
 let excelSheets = [];
@@ -11,6 +13,8 @@ let activeSheetIdx = 0;
 let selectedRow = 0;
 let selectedCol = 0;
 let editingCellInput = null;
+let excelClipboard = null;
+let showExcelGridlines = true;
 
 // ==================== PPT STATE ====================
 let pptDeck = [];
@@ -20,10 +24,10 @@ let presentationIndex = 0;
 
 // LocalStorage Keys
 const STORAGE_KEYS = {
-  TITLE: 'newt_office_doc_title_v2',
-  EXCEL_DATA: 'newt_office_excel_v2',
-  WORD_HTML: 'newt_office_word_v2',
-  PPT_DECK: 'newt_office_ppt_v2'
+  TITLE: 'newt_office_doc_title_v3',
+  EXCEL_DATA: 'newt_office_excel_v3',
+  WORD_HTML: 'newt_office_word_v3',
+  PPT_DECK: 'newt_office_ppt_v3'
 };
 
 /* ==================== INITIALIZATION ==================== */
@@ -33,11 +37,21 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('docTitleInput').value = savedTitle;
   }
   document.getElementById('docTitleInput').addEventListener('input', (e) => {
-    localStorage.setItem(STORAGE_KEYS.TITLE, e.target.value.trim() || '제목 없는 문서');
+    localStorage.setItem(STORAGE_KEYS.TITLE, e.target.value.trim() || '문서1');
     markAutoSaved();
   });
 
   document.getElementById('globalFileInput').addEventListener('change', handleGlobalFileOpen);
+
+  // Close waffle menu when clicking outside
+  window.addEventListener('click', (e) => {
+    const dd = document.getElementById('waffleDropdown');
+    if (dd && !dd.classList.contains('hidden')) {
+      if (!e.target.closest('#waffleDropdown') && !e.target.closest('.waffle-btn')) {
+        dd.classList.add('hidden');
+      }
+    }
+  });
 
   // Initialize 3 Engines Instantly
   initExcelEngine();
@@ -55,55 +69,165 @@ function showToast(msg) {
   clearTimeout(window.__toastTimer);
   window.__toastTimer = setTimeout(() => {
     toast.classList.add('hidden');
-  }, 2600);
+  }, 2500);
 }
 
 function markAutoSaved() {
   const badge = document.getElementById('autoSaveBadge');
+  if (!badge) return;
   const now = new Date();
-  badge.textContent = `자동 저장 (${now.toTimeString().slice(0, 5)})`;
+  badge.textContent = `· 저장됨 (${now.toTimeString().slice(0, 5)})`;
 }
 
 function getCleanDocTitle() {
   const val = document.getElementById('docTitleInput').value.trim();
-  return val || 'NEWT_문서';
+  return val || '문서1';
 }
 
-/* ==================== MODE SWITCHING ==================== */
+function triggerGlobalFileOpen() {
+  document.getElementById('globalFileInput').click();
+}
+
+function toggleWaffleMenu(e) {
+  e.stopPropagation();
+  document.getElementById('waffleDropdown').classList.toggle('hidden');
+}
+
+function closeWaffleMenu() {
+  document.getElementById('waffleDropdown').classList.add('hidden');
+}
+
+function openFileBackstage() {
+  document.getElementById('fileBackstageModal').classList.remove('hidden');
+}
+
+function closeFileBackstage() {
+  document.getElementById('fileBackstageModal').classList.add('hidden');
+}
+
+function handleUndo() {
+  if (currentMode === 'word') {
+    execWordCmd('undo');
+  } else {
+    document.execCommand('undo');
+  }
+}
+
+function handleRedo() {
+  if (currentMode === 'word') {
+    execWordCmd('redo');
+  } else {
+    document.execCommand('redo');
+  }
+}
+
+/* ==================== RIBBON & APP MODE SWITCHING ==================== */
 function switchOfficeMode(mode) {
   currentMode = mode;
 
-  document.querySelectorAll('.suite-tab').forEach((btn) => {
+  // 1. Body Theme Class (MS Excel Green / MS Word Blue / MS PPT Orange)
+  document.body.className = `theme-${mode}`;
+
+  // 2. Titlebar App Brand & Chip Active State
+  const brandEl = document.getElementById('msAppBrandName');
+  const extEl = document.getElementById('docExtBadge');
+  const dlLabel = document.getElementById('downloadBtnLabel');
+  const layoutTabLabel = document.getElementById('layoutTabLabel');
+  const specialTabLabel = document.getElementById('specialTabLabel');
+
+  document.querySelectorAll('.app-switch-chip').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
 
+  // 3. Switch Active App Ribbon Group
+  document.querySelectorAll('.app-ribbon-group').forEach((grp) => {
+    grp.classList.toggle('active', grp.dataset.appRibbon === mode);
+  });
+
+  // 4. Switch Workspace View
   document.querySelectorAll('.office-view').forEach((sec) => {
     sec.classList.remove('active');
   });
   document.getElementById(`view-${mode}`).classList.add('active');
 
-  const badge = document.getElementById('brandBadge');
-  const dlBtn = document.getElementById('primaryDownloadBtn');
-  const dlLabel = document.getElementById('downloadBtnLabel');
-
   if (mode === 'excel') {
-    badge.style.background = 'var(--excel-primary)';
-    badge.textContent = 'X';
-    dlBtn.style.background = 'var(--excel-primary)';
-    dlLabel.textContent = '💾 .xlsx 다운로드';
-    renderExcelGrid();
+    brandEl.textContent = 'Excel';
+    extEl.textContent = '.xlsx';
+    dlLabel.textContent = '⬇ .xlsx 저장';
+    layoutTabLabel.textContent = '페이지 레이아웃';
+    specialTabLabel.textContent = '수식 및 데이터';
+    renderExcelWorkspace();
   } else if (mode === 'word') {
-    badge.style.background = 'var(--word-primary)';
-    badge.textContent = 'W';
-    dlBtn.style.background = 'var(--word-primary)';
-    dlLabel.textContent = '💾 .doc 다운로드';
+    brandEl.textContent = 'Word';
+    extEl.textContent = '.doc';
+    dlLabel.textContent = '⬇ .doc 저장';
+    layoutTabLabel.textContent = '레이아웃';
+    specialTabLabel.textContent = '검토 및 인쇄';
+    updateWordCounters();
   } else if (mode === 'ppt') {
-    badge.style.background = 'var(--ppt-primary)';
-    badge.textContent = 'P';
-    dlBtn.style.background = 'var(--ppt-primary)';
-    dlLabel.textContent = '💾 .pptx 다운로드';
+    brandEl.textContent = 'PowerPoint';
+    extEl.textContent = '.pptx';
+    dlLabel.textContent = '⬇ .pptx 저장';
+    layoutTabLabel.textContent = '디자인 테마';
+    specialTabLabel.textContent = '슬라이드 쇼';
     renderPptWorkspace();
   }
+
+  // Ensure current ribbon tab panel is shown
+  switchRibbonTab(activeRibbonTab);
+}
+
+function switchRibbonTab(tabName) {
+  activeRibbonTab = tabName;
+
+  document.querySelectorAll('.ribbon-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.rtab === tabName);
+  });
+
+  // Shared templates panel vs app-specific panel
+  const sharedPanel = document.querySelector('.shared-templates-panel');
+  const activeAppGroup = document.querySelector(`.app-ribbon-group[data-app-ribbon="${currentMode}"]`);
+
+  if (tabName === 'templates') {
+    document.querySelectorAll('.app-ribbon-group').forEach((g) => g.classList.remove('active'));
+    if (sharedPanel) sharedPanel.classList.add('active');
+  } else {
+    if (sharedPanel) sharedPanel.classList.remove('active');
+    document.querySelectorAll('.app-ribbon-group').forEach((g) => {
+      g.classList.toggle('active', g.dataset.appRibbon === currentMode);
+    });
+    if (activeAppGroup) {
+      activeAppGroup.querySelectorAll('.ribbon-panel').forEach((p) => {
+        p.classList.toggle('active', p.dataset.rpanel === tabName);
+      });
+    }
+  }
+}
+
+/* ==================== WORKSPACE ZOOM SLIDER ==================== */
+function setWorkspaceZoom(val) {
+  workspaceZoom = Math.max(60, Math.min(150, Number(val) || 100));
+  document.getElementById('workspaceZoomSlider').value = workspaceZoom;
+  document.getElementById('workspaceZoomLabel').textContent = `${workspaceZoom}%`;
+
+  const scale = workspaceZoom / 100;
+  const excelTable = document.getElementById('excelGridTable');
+  const wordPage = document.getElementById('wordPageEditor');
+  const pptStage = document.getElementById('pptSlideStage');
+
+  if (excelTable) {
+    excelTable.style.zoom = `${workspaceZoom}%`;
+  }
+  if (wordPage) {
+    wordPage.style.transform = `scale(${scale})`;
+  }
+  if (pptStage) {
+    pptStage.style.transform = `scale(${scale})`;
+  }
+}
+
+function adjustWorkspaceZoom(delta) {
+  setWorkspaceZoom(workspaceZoom + delta);
 }
 
 function downloadCurrentDocument() {
@@ -114,21 +238,21 @@ function downloadCurrentDocument() {
 
 function createNewDocument() {
   if (currentMode === 'excel') {
-    if (!confirm('현재 시트를 비우고 새 엑셀 문서를 만드시겠습니까?')) return;
-    excelSheets = [createBlankExcelSheet('Sheet1', 35, 14)];
+    if (!confirm('현재 시트를 비우고 새 빈 엑셀 통합 문서를 만드시겠습니까?')) return;
+    excelSheets = [createBlankExcelSheet('Sheet1', 40, 15)];
     activeSheetIdx = 0;
     selectedRow = 0;
     selectedCol = 0;
     saveExcelState();
     renderExcelWorkspace();
-    showToast('새 빈 엑셀 시트가 생성되었습니다.');
+    showToast('새 Excel 통합 문서가 생성되었습니다.');
   } else if (currentMode === 'word') {
-    if (!confirm('현재 워드 문서를 비우고 새로 작성하시겠습니까?')) return;
+    if (!confirm('현재 워드 문서를 비우고 새 문서를 작성하시겠습니까?')) return;
     document.getElementById('wordPageEditor').innerHTML =
-      '<h1>새 문서 제목</h1><p>여기에 내용을 입력하세요...</p>';
+      '<h1>새 문서 제목</h1><p>여기에 본문 내용을 입력하세요...</p>';
     saveWordState();
     updateWordCounters();
-    showToast('새 워드 문서가 생성되었습니다.');
+    showToast('새 Word 문서가 생성되었습니다.');
   } else if (currentMode === 'ppt') {
     if (!confirm('현재 슬라이드를 초기화하고 새 프레젠테이션을 만드시겠습니까?')) return;
     pptDeck = [createDefaultTitleSlide()];
@@ -136,12 +260,12 @@ function createNewDocument() {
     selectedElementId = null;
     savePptState();
     renderPptWorkspace();
-    showToast('새 프레젠테이션이 생성되었습니다.');
+    showToast('새 PowerPoint 프레젠테이션이 생성되었습니다.');
   }
 }
 
 /* ============================================================================
- * 1. NATIVE INSTANT EXCEL ENGINE (0ms Grid, Formulas, Multi-Sheet, .xlsx/.csv)
+ * 1. NATIVE INSTANT EXCEL ENGINE
  * ============================================================================ */
 function colIdxToName(c) {
   let name = '';
@@ -175,12 +299,12 @@ function addrToCellCoord(addr) {
   };
 }
 
-function createBlankExcelSheet(name = 'Sheet1', rows = 35, cols = 14) {
+function createBlankExcelSheet(name = 'Sheet1', rows = 40, cols = 15) {
   return {
     name,
     rows,
     cols,
-    cells: {} // key: "r,c" -> { raw: "", bold: false, align: "", color: "", bg: "", comma: true }
+    cells: {}
   };
 }
 
@@ -205,13 +329,26 @@ function initExcelEngine() {
   formulaInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      setCellRawValue(selectedRow, selectedCol, formulaInput.value);
-      selectExcelCell(Math.min(getActiveSheet().rows - 1, selectedRow + 1), selectedCol);
+      confirmFormulaBarEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelFormulaBarEdit();
     }
   });
   formulaInput.addEventListener('input', () => {
     setCellRawValue(selectedRow, selectedCol, formulaInput.value, false);
   });
+}
+
+function confirmFormulaBarEdit() {
+  const formulaInput = document.getElementById('excelFormulaInput');
+  setCellRawValue(selectedRow, selectedCol, formulaInput.value, true);
+  selectExcelCell(Math.min(getActiveSheet().rows - 1, selectedRow + 1), selectedCol);
+}
+
+function cancelFormulaBarEdit() {
+  updateExcelFormulaBarAndStats();
+  document.getElementById('excelFormulaInput').blur();
 }
 
 function getActiveSheet() {
@@ -241,7 +378,7 @@ function getCellObj(sheet, r, c) {
   return sheet.cells[`${r},${c}`] || null;
 }
 
-/* ---- Excel Formula Evaluator (=SUM, =AVERAGE, =MIN, =MAX, =COUNT, =IF, arithmetic) ---- */
+/* ---- Excel Formula Evaluator (=SUM, =AVERAGE, =MIN, =MAX, =COUNT, arithmetic) ---- */
 function evaluateCellValue(sheet, r, c, visited = new Set()) {
   const key = `${r},${c}`;
   if (visited.has(key)) return '#REF!';
@@ -264,7 +401,6 @@ function evaluateCellValue(sheet, r, c, visited = new Set()) {
   try {
     let expr = rawStr.slice(1).trim();
 
-    // 1. Expand Range Functions: SUM(A1:B5), AVERAGE(C2:C6), MIN(...), MAX(...), COUNT(...)
     expr = expr.replace(/\b(SUM|AVERAGE|AVG|MIN|MAX|COUNT)\s*\(\s*([A-Za-z]+\d+)\s*:\s*([A-Za-z]+\d+)\s*\)/gi, (_, fn, startAddr, endAddr) => {
       const s = addrToCellCoord(startAddr);
       const e = addrToCellCoord(endAddr);
@@ -290,7 +426,6 @@ function evaluateCellValue(sheet, r, c, visited = new Set()) {
       return '0';
     });
 
-    // 2. Replace Single Cell References (e.g. C2, D5)
     expr = expr.replace(/\b([A-Za-z]{1,2}\d{1,3})\b/g, (addr) => {
       const coord = addrToCellCoord(addr);
       if (!coord) return '0';
@@ -299,9 +434,8 @@ function evaluateCellValue(sheet, r, c, visited = new Set()) {
       return val !== '' && !isNaN(n) ? String(n) : '0';
     });
 
-    // Safe arithmetic evaluation
     if (!/^[0-9+\-*/().\s]+$/.test(expr)) {
-      return '#수식오류';
+      return '#VALUE!';
     }
     const result = Function(`"use strict"; return (${expr});`)();
     if (typeof result === 'number' && isFinite(result)) {
@@ -318,6 +452,12 @@ function formatDisplayValue(sheet, r, c) {
   const val = evaluateCellValue(sheet, r, c);
   if (val === '' || val === null || val === undefined) return '';
   if (typeof val === 'number') {
+    if (cell && cell.numFmt === 'currency') {
+      return '₩ ' + val.toLocaleString('ko-KR');
+    }
+    if (cell && cell.numFmt === 'percent') {
+      return val.toLocaleString('ko-KR') + '%';
+    }
     if (cell && cell.comma === false) return String(val);
     return val.toLocaleString('ko-KR');
   }
@@ -332,6 +472,7 @@ function renderExcelWorkspace() {
 
 function renderExcelSheetTabs() {
   const container = document.getElementById('excelSheetTabs');
+  if (!container) return;
   container.innerHTML = '';
 
   excelSheets.forEach((sh, idx) => {
@@ -345,7 +486,7 @@ function renderExcelSheetTabs() {
       renderExcelWorkspace();
     };
     btn.ondblclick = () => {
-      const newName = prompt('시트 이름을 입력하세요:', sh.name);
+      const newName = prompt('시트 이름 변경:', sh.name);
       if (newName && newName.trim()) {
         sh.name = newName.trim();
         saveExcelState();
@@ -356,21 +497,30 @@ function renderExcelSheetTabs() {
   });
 }
 
+function cycleExcelSheet(delta) {
+  const next = activeSheetIdx + delta;
+  if (next < 0 || next >= excelSheets.length) return;
+  activeSheetIdx = next;
+  renderExcelWorkspace();
+}
+
 function addNewExcelSheet() {
   const newName = `Sheet${excelSheets.length + 1}`;
-  excelSheets.push(createBlankExcelSheet(newName, 35, 14));
+  excelSheets.push(createBlankExcelSheet(newName, 40, 15));
   activeSheetIdx = excelSheets.length - 1;
   selectedRow = 0;
   selectedCol = 0;
   saveExcelState();
   renderExcelWorkspace();
-  showToast(`'${newName}' 시트가 추가되었습니다. (시트 탭 더블클릭 시 이름 변경)`);
+  showToast(`'${newName}' 시트가 추가되었습니다.`);
 }
 
 function renderExcelGrid() {
   const sheet = getActiveSheet();
   const table = document.getElementById('excelGridTable');
   if (!sheet || !table) return;
+
+  table.classList.toggle('hide-gridlines', !showExcelGridlines);
 
   let html = '<thead><tr><th class="corner-header"></th>';
   for (let c = 0; c < sheet.cols; c++) {
@@ -394,6 +544,11 @@ function renderExcelGrid() {
         if (cell.bg) styleStr += `background-color:${cell.bg};`;
         if (cell.color) styleStr += `color:${cell.color};`;
         if (cell.bold) styleStr += `font-weight:700;`;
+        if (cell.italic) styleStr += `font-style:italic;`;
+        if (cell.underline) styleStr += `text-decoration:underline;`;
+        if (cell.font) styleStr += `font-family:${cell.font};`;
+        if (cell.fontSize) styleStr += `font-size:${cell.fontSize};`;
+        if (cell.border) styleStr += `border:1.5px solid #323130;`;
         if (cell.align) {
           styleStr += `text-align:${cell.align};`;
         } else if (isNum) {
@@ -414,7 +569,6 @@ function renderExcelGrid() {
 
   table.innerHTML = html;
 
-  // Bind click & dblclick on table via delegation
   table.onclick = (e) => {
     const td = e.target.closest('td.excel-cell');
     if (!td) return;
@@ -441,7 +595,6 @@ function selectExcelCell(r, c) {
   selectedRow = Math.max(0, Math.min(sheet.rows - 1, r));
   selectedCol = Math.max(0, Math.min(sheet.cols - 1, c));
 
-  // Fast DOM class update without rebuilding full table
   const table = document.getElementById('excelGridTable');
   table.querySelectorAll('.selected-cell').forEach((el) => el.classList.remove('selected-cell'));
   table.querySelectorAll('.active-header').forEach((el) => el.classList.remove('active-header'));
@@ -481,6 +634,7 @@ function openInlineCellEditor(td, r, c, initialChar = null) {
   }
 
   editingCellInput = { input, r, c };
+  document.getElementById('statusReadyText').textContent = '입력';
 
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -494,14 +648,13 @@ function openInlineCellEditor(td, r, c, initialChar = null) {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       editingCellInput = null;
+      document.getElementById('statusReadyText').textContent = '준비';
       renderExcelGrid();
     }
   });
 
   input.addEventListener('blur', () => {
-    if (editingCellInput) {
-      commitInlineCellEdit();
-    }
+    if (editingCellInput) commitInlineCellEdit();
   });
 }
 
@@ -510,21 +663,22 @@ function commitInlineCellEdit() {
   const { input, r, c } = editingCellInput;
   const val = input.value;
   editingCellInput = null;
+  document.getElementById('statusReadyText').textContent = '준비';
   setCellRawValue(r, c, val, true);
 }
 
 function updateExcelFormulaBarAndStats() {
   const sheet = getActiveSheet();
   const addr = cellCoordToAddr(selectedRow, selectedCol);
-  document.getElementById('excelCellAddressBox').textContent = addr;
+  const addrBox = document.getElementById('excelCellAddressBox');
+  if (addrBox) addrBox.textContent = addr;
 
   const cell = getCellObj(sheet, selectedRow, selectedCol);
   const formulaInput = document.getElementById('excelFormulaInput');
-  if (document.activeElement !== formulaInput) {
+  if (formulaInput && document.activeElement !== formulaInput) {
     formulaInput.value = cell ? cell.raw : '';
   }
 
-  // Compute sheet numeric summary
   let sum = 0;
   let count = 0;
   Object.keys(sheet.cells).forEach((k) => {
@@ -537,8 +691,38 @@ function updateExcelFormulaBarAndStats() {
   });
   const avg = count > 0 ? Math.round(sum / count) : 0;
 
-  document.getElementById('excelSummaryStats').textContent =
-    `선택 셀: ${addr}  |  시트 숫자 합계: ${sum.toLocaleString('ko-KR')}  |  평균: ${avg.toLocaleString('ko-KR')}  |  데이터 셀: ${count}개`;
+  if (currentMode === 'excel') {
+    document.getElementById('statusReadyText').textContent = '준비';
+    document.getElementById('statusContextInfo').textContent =
+      `셀 ${addr}  ·  시트 ${activeSheetIdx + 1} / ${excelSheets.length}`;
+    document.getElementById('statusMetricsText').innerHTML =
+      `평균: ${avg.toLocaleString('ko-KR')} &nbsp;&nbsp;&nbsp; 개수: ${count} &nbsp;&nbsp;&nbsp; 합계: ${sum.toLocaleString('ko-KR')}`;
+  }
+}
+
+/* ---- Excel Ribbon Actions ---- */
+function copyExcelCell() {
+  const sheet = getActiveSheet();
+  const cell = getCellObj(sheet, selectedRow, selectedCol);
+  excelClipboard = cell ? JSON.parse(JSON.stringify(cell)) : { raw: '' };
+  showToast(`${cellCoordToAddr(selectedRow, selectedCol)} 셀이 복사되었습니다.`);
+}
+
+function cutExcelCell() {
+  copyExcelCell();
+  setCellRawValue(selectedRow, selectedCol, '', true);
+}
+
+function pasteExcelCell() {
+  if (!excelClipboard) {
+    showToast('복사된 셀이 없습니다.');
+    return;
+  }
+  const sheet = getActiveSheet();
+  sheet.cells[`${selectedRow},${selectedCol}`] = JSON.parse(JSON.stringify(excelClipboard));
+  saveExcelState();
+  renderExcelGrid();
+  updateExcelFormulaBarAndStats();
 }
 
 function formatSelectedExcelCells(prop, value) {
@@ -548,24 +732,169 @@ function formatSelectedExcelCells(prop, value) {
   const cell = sheet.cells[key];
 
   if (prop === 'bold') cell.bold = !cell.bold;
+  else if (prop === 'italic') cell.italic = !cell.italic;
+  else if (prop === 'underline') cell.underline = !cell.underline;
+  else if (prop === 'border') cell.border = !cell.border;
+  else if (prop === 'font') cell.font = value;
+  else if (prop === 'fontSize') cell.fontSize = value;
   else if (prop === 'align') cell.align = value;
   else if (prop === 'color') cell.color = value;
   else if (prop === 'bg') cell.bg = value;
   else if (prop === 'comma') cell.comma = cell.comma === false ? true : false;
+  else if (prop === 'clearStyle') {
+    sheet.cells[key] = { raw: cell.raw || '', comma: true };
+  }
 
   saveExcelState();
   renderExcelGrid();
 }
 
-function insertExcelFunction(fnName) {
+function applyExcelNumberPreset(preset) {
   const sheet = getActiveSheet();
-  // Find numeric cells above current cell in same column
-  let startR = 1;
+  const key = `${selectedRow},${selectedCol}`;
+  if (!sheet.cells[key]) sheet.cells[key] = { raw: '', comma: true };
+  const cell = sheet.cells[key];
+
+  if (preset === 'currency') {
+    cell.numFmt = 'currency';
+    cell.comma = true;
+  } else if (preset === 'percent') {
+    cell.numFmt = 'percent';
+  } else if (preset === 'plain') {
+    cell.numFmt = 'general';
+    cell.comma = false;
+  } else {
+    cell.numFmt = 'general';
+    cell.comma = true;
+  }
+  saveExcelState();
+  renderExcelGrid();
+}
+
+function insertExcelRowAtCursor() {
+  const sheet = getActiveSheet();
+  const newCells = {};
+  Object.keys(sheet.cells).forEach((k) => {
+    const [r, c] = k.split(',').map(Number);
+    if (r >= selectedRow) {
+      newCells[`${r + 1},${c}`] = sheet.cells[k];
+    } else {
+      newCells[k] = sheet.cells[k];
+    }
+  });
+  sheet.cells = newCells;
+  sheet.rows++;
+  saveExcelState();
+  renderExcelGrid();
+  showToast(`${selectedRow + 1}행 위에 새 행이 삽입되었습니다.`);
+}
+
+function deleteExcelRowAtCursor() {
+  const sheet = getActiveSheet();
+  const newCells = {};
+  Object.keys(sheet.cells).forEach((k) => {
+    const [r, c] = k.split(',').map(Number);
+    if (r < selectedRow) {
+      newCells[k] = sheet.cells[k];
+    } else if (r > selectedRow) {
+      newCells[`${r - 1},${c}`] = sheet.cells[k];
+    }
+  });
+  sheet.cells = newCells;
+  saveExcelState();
+  renderExcelGrid();
+  showToast(`${selectedRow + 1}행이 삭제되었습니다.`);
+}
+
+function insertExcelColAtCursor() {
+  const sheet = getActiveSheet();
+  const newCells = {};
+  Object.keys(sheet.cells).forEach((k) => {
+    const [r, c] = k.split(',').map(Number);
+    if (c >= selectedCol) {
+      newCells[`${r},${c + 1}`] = sheet.cells[k];
+    } else {
+      newCells[k] = sheet.cells[k];
+    }
+  });
+  sheet.cells = newCells;
+  sheet.cols++;
+  saveExcelState();
+  renderExcelGrid();
+  showToast(`${colIdxToName(selectedCol)}열 왼쪽에 새 열이 삽입되었습니다.`);
+}
+
+function sortExcelColumn(dir = 'asc') {
+  const sheet = getActiveSheet();
+  // Collect data rows (skip row 0 header)
+  let maxR = 0;
+  Object.keys(sheet.cells).forEach((k) => {
+    const [r] = k.split(',').map(Number);
+    if (r > maxR) maxR = r;
+  });
+  if (maxR <= 1) return;
+
+  const rowsData = [];
+  for (let r = 1; r <= maxR; r++) {
+    const rowMap = {};
+    let hasVal = false;
+    for (let c = 0; c < sheet.cols; c++) {
+      if (sheet.cells[`${r},${c}`]) {
+        rowMap[c] = sheet.cells[`${r},${c}`];
+        if (rowMap[c].raw !== '') hasVal = true;
+      }
+    }
+    if (hasVal) {
+      rowsData.push({ r, sortVal: evaluateCellValue(sheet, r, selectedCol), rowMap });
+    }
+  }
+
+  rowsData.sort((a, b) => {
+    const va = a.sortVal;
+    const vb = b.sortVal;
+    if (typeof va === 'number' && typeof vb === 'number') {
+      return dir === 'asc' ? va - vb : vb - va;
+    }
+    return dir === 'asc'
+      ? String(va).localeCompare(String(vb), 'ko')
+      : String(vb).localeCompare(String(va), 'ko');
+  });
+
+  // Keep row 0 header, rewrite rows 1..rowsData.length
+  const newCells = {};
+  for (let c = 0; c < sheet.cols; c++) {
+    if (sheet.cells[`0,${c}`]) newCells[`0,${c}`] = sheet.cells[`0,${c}`];
+  }
+  rowsData.forEach((item, idx) => {
+    const targetR = idx + 1;
+    Object.keys(item.rowMap).forEach((c) => {
+      newCells[`${targetR},${c}`] = item.rowMap[c];
+    });
+  });
+
+  sheet.cells = newCells;
+  saveExcelState();
+  renderExcelGrid();
+  showToast(`${colIdxToName(selectedCol)}열 기준으로 정렬되었습니다.`);
+}
+
+function insertTodayInExcel() {
+  const today = new Date().toISOString().slice(0, 10);
+  setCellRawValue(selectedRow, selectedCol, today, true);
+}
+
+function toggleExcelGridlines() {
+  showExcelGridlines = !showExcelGridlines;
+  renderExcelGrid();
+}
+
+function insertExcelFunction(fnName) {
+  const startR = 1;
   const endR = Math.max(1, selectedRow);
   const colLetter = colIdxToName(selectedCol);
   const formula = `=${fnName}(${colLetter}${startR + 1}:${colLetter}${endR})`;
   setCellRawValue(selectedRow, selectedCol, formula, true);
-  showToast(`${cellCoordToAddr(selectedRow, selectedCol)} 셀에 ${formula} 수식이 적용되었습니다.`);
+  showToast(`${cellCoordToAddr(selectedRow, selectedCol)} 셀에 ${formula} 수식이 입력되었습니다.`);
 }
 
 function addExcelRows(count = 10) {
@@ -573,7 +902,7 @@ function addExcelRows(count = 10) {
   sheet.rows += count;
   saveExcelState();
   renderExcelGrid();
-  showToast(`행 ${count}개가 추가되었습니다. (총 ${sheet.rows}행)`);
+  showToast(`행 ${count}개가 추가되었습니다.`);
 }
 
 function addExcelCols(count = 5) {
@@ -581,12 +910,12 @@ function addExcelCols(count = 5) {
   sheet.cols += count;
   saveExcelState();
   renderExcelGrid();
-  showToast(`열 ${count}개가 추가되었습니다. (총 ${sheet.cols}열)`);
+  showToast(`열 ${count}개가 추가되었습니다.`);
 }
 
-function populateSheetFromAOA(sheetName, aoa, headerColor = '#107c41') {
-  const rows = Math.max(35, aoa.length + 15);
-  const cols = Math.max(12, (aoa[0]?.length || 8) + 4);
+function populateSheetFromAOA(sheetName, aoa, headerColor = '#217346') {
+  const rows = Math.max(40, aoa.length + 18);
+  const cols = Math.max(14, (aoa[0]?.length || 8) + 5);
   const sheet = createBlankExcelSheet(sheetName, rows, cols);
 
   for (let r = 0; r < aoa.length; r++) {
@@ -598,8 +927,8 @@ function populateSheetFromAOA(sheetName, aoa, headerColor = '#107c41') {
       sheet.cells[`${r},${c}`] = {
         raw: String(val),
         bold: isHeader || isTotalRow,
-        bg: isHeader ? headerColor : (isTotalRow ? '#ecfdf5' : ''),
-        color: isHeader ? '#ffffff' : '#0f172a',
+        bg: isHeader ? headerColor : (isTotalRow ? '#e6f2ec' : ''),
+        color: isHeader ? '#ffffff' : '#201f1e',
         align: isHeader ? 'center' : (typeof val === 'number' || String(val).startsWith('=') ? 'right' : 'left'),
         comma: true
       };
@@ -611,7 +940,7 @@ function populateSheetFromAOA(sheetName, aoa, headerColor = '#107c41') {
 function loadExcelSample(type, silent = false) {
   let aoa = [];
   let sheetName = 'Sheet1';
-  let docTitle = '월간예산_가계부';
+  let docTitle = '2026_월간예산_가계부';
 
   if (type === 'budget') {
     sheetName = '월간예산_가계부';
@@ -619,7 +948,7 @@ function loadExcelSample(type, silent = false) {
     aoa = [
       ['항목 구분', '세부 지출 내역', '월 예산 (원)', '실제 지출 (원)', '잔여 예산 (수식)', '비고 / 결제수단'],
       ['고정지출', '통신비 및 인터넷 요금', 85000, 82000, '=C2-D2', '자동이체'],
-      ['고정지출', 'MS 365 오피스 구독료 해지!', 11900, 0, '=C3-D3', 'NEWT 웹오피스로 100% 절감'],
+      ['고정지출', 'MS 365 오피스 구독료 해지!', 11900, 0, '=C3-D3', '웹 오피스 전환 100% 절감'],
       ['변동생활비', '식비 / 마트 장보기', 600000, 535000, '=C4-D4', '신용카드'],
       ['변동생활비', '교통비 / 차량 주유비', 200000, 185000, '=C5-D5', '체크카드'],
       ['문화/자기계발', '도서 구입 및 운동', 150000, 120000, '=C6-D6', ''],
@@ -658,17 +987,34 @@ function loadExcelSample(type, silent = false) {
   document.getElementById('docTitleInput').value = docTitle;
   saveExcelState();
   renderExcelWorkspace();
-  if (!silent) showToast(`'${sheetName}' 시트가 즉시 로드되었습니다.`);
+  if (!silent) showToast(`'${sheetName}' 서식이 적용되었습니다.`);
 }
 
-/* ---- Excel Keyboard Navigation ---- */
+/* ---- Global Keyboard Navigation ---- */
 function handleGlobalKeyDown(e) {
-  // Ignore if typing inside an input/textarea/word editor
   const tag = document.activeElement?.tagName;
   const isWordEditor = document.activeElement?.id === 'wordPageEditor';
 
+  if (e.ctrlKey && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    downloadCurrentDocument();
+    return;
+  }
+
   if (currentMode === 'excel' && !editingCellInput && tag !== 'INPUT' && tag !== 'TEXTAREA' && !isWordEditor) {
-    if (e.key === 'ArrowDown') {
+    if (e.ctrlKey && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      copyExcelCell();
+    } else if (e.ctrlKey && e.key.toLowerCase() === 'x') {
+      e.preventDefault();
+      cutExcelCell();
+    } else if (e.ctrlKey && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      pasteExcelCell();
+    } else if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      formatSelectedExcelCells('bold');
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       selectExcelCell(selectedRow + 1, selectedCol);
     } else if (e.key === 'ArrowUp') {
@@ -711,7 +1057,7 @@ function handleGlobalKeyDown(e) {
 /* ---- Excel Import & Export (.xlsx / .csv) ---- */
 async function importExcelFile(file) {
   if (typeof XLSX === 'undefined') {
-    showToast('엑셀 파서 라이브러리를 불러오는 중입니다. 1초 후 다시 시도해 주세요.');
+    showToast('엑셀 파서를 로드 중입니다. 1초 후 다시 시도해 주세요.');
     return;
   }
   const buffer = await file.arrayBuffer();
@@ -720,8 +1066,8 @@ async function importExcelFile(file) {
   excelSheets = wb.SheetNames.map((name) => {
     const ws = wb.Sheets[name];
     const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
-    const rows = Math.max(35, aoa.length + 15);
-    const cols = Math.max(14, (aoa[0]?.length || 10) + 5);
+    const rows = Math.max(40, aoa.length + 15);
+    const cols = Math.max(15, (aoa[0]?.length || 10) + 5);
     const sheet = createBlankExcelSheet(name, rows, cols);
 
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
@@ -735,7 +1081,7 @@ async function importExcelFile(file) {
           sheet.cells[`${R},${C}`] = {
             raw: rawVal,
             bold: R === 0,
-            bg: R === 0 ? '#f1f5f9' : '',
+            bg: R === 0 ? '#f3f2f1' : '',
             comma: true
           };
         }
@@ -749,7 +1095,7 @@ async function importExcelFile(file) {
   selectedCol = 0;
   saveExcelState();
   renderExcelWorkspace();
-  showToast(`'${file.name}' (${excelSheets.length}개 시트) 불러오기 완료!`);
+  showToast(`'${file.name}' (${excelSheets.length}개 시트) 열기 완료!`);
 }
 
 function buildWorkbookFromState() {
@@ -771,15 +1117,13 @@ function buildWorkbookFromState() {
     for (let r = 0; r <= maxR; r++) {
       const rowArr = [];
       for (let c = 0; c <= maxC; c++) {
-        const val = evaluateCellValue(sheet, r, c);
-        rowArr.push(val);
+        rowArr.push(evaluateCellValue(sheet, r, c));
       }
       aoa.push(rowArr);
     }
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-    // Attach formulas to SheetJS worksheet
     for (let r = 0; r <= maxR; r++) {
       for (let c = 0; c <= maxC; c++) {
         const cell = getCellObj(sheet, r, c);
@@ -809,7 +1153,7 @@ function exportExcelXLSX() {
   const wb = buildWorkbookFromState();
   const fileName = `${getCleanDocTitle()}.xlsx`;
   XLSX.writeFile(wb, fileName);
-  showToast(`'${fileName}' 엑셀 파일 다운로드 완료!`);
+  showToast(`'${fileName}' 저장 완료!`);
 }
 
 function exportExcelCSV() {
@@ -871,7 +1215,7 @@ async function handleGlobalFileOpen(event) {
       }
       saveWordState();
       updateWordCounters();
-      showToast(`'${file.name}' 문서를 불러왔습니다.`);
+      showToast(`'${file.name}' 문서를 열었습니다.`);
     } else if (['pptx'].includes(ext)) {
       switchOfficeMode('ppt');
       await importPptxFile(file);
@@ -883,7 +1227,7 @@ async function handleGlobalFileOpen(event) {
 }
 
 /* ============================================================================
- * 2. WORD ENGINE (Rich A4 Editor + .docx Import + MS Word .doc Export)
+ * 2. MS WORD ENGINE
  * ============================================================================ */
 function initWordEngine() {
   const editor = document.getElementById('wordPageEditor');
@@ -899,8 +1243,6 @@ function initWordEngine() {
     saveWordState();
     updateWordCounters();
   });
-
-  updateWordCounters();
 }
 
 function saveWordState() {
@@ -911,19 +1253,34 @@ function saveWordState() {
 
 function updateWordCounters() {
   const editor = document.getElementById('wordPageEditor');
+  if (!editor) return;
   const text = editor.innerText || '';
   const totalChars = text.replace(/\n/g, '').length;
   const noSpaceChars = text.replace(/\s+/g, '').length;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
 
-  document.getElementById('wordCharCount').textContent =
-    `글자 수: ${totalChars.toLocaleString()}자 (공백 제외 ${noSpaceChars.toLocaleString()}자) · 단어: ${words.toLocaleString()}개`;
+  if (currentMode === 'word') {
+    document.getElementById('statusReadyText').textContent = '페이지 1 / 1';
+    document.getElementById('statusContextInfo').textContent = '한국어 (대한민국)';
+    document.getElementById('statusMetricsText').innerHTML =
+      `단어: ${words.toLocaleString()}개 &nbsp;&nbsp;&nbsp; 글자 수: ${totalChars.toLocaleString()}자 (공백 제외 ${noSpaceChars.toLocaleString()}자)`;
+  }
+}
+
+function alertWordCountReport() {
+  const editor = document.getElementById('wordPageEditor');
+  const text = editor.innerText || '';
+  const totalChars = text.replace(/\n/g, '').length;
+  const noSpaceChars = text.replace(/\s+/g, '').length;
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  alert(`[Word 단어 수 통계]\n\n• 단어 수: ${words.toLocaleString()}개\n• 문자 수(공백 포함): ${totalChars.toLocaleString()}자\n• 문자 수(공백 제외): ${noSpaceChars.toLocaleString()}자`);
 }
 
 function execWordCmd(cmd, value = null) {
   document.getElementById('wordPageEditor').focus();
   document.execCommand(cmd, false, value);
   saveWordState();
+  updateWordCounters();
 }
 
 function applyWordFontSize(sizePt) {
@@ -934,6 +1291,30 @@ function applyWordFontSize(sizePt) {
     el.style.fontSize = sizePt;
   });
   saveWordState();
+}
+
+function setWordPageMargin(mode) {
+  const page = document.getElementById('wordPageEditor');
+  if (mode === 'narrow') {
+    page.style.padding = '12.7mm 12.7mm';
+    showToast('좁은 여백(12.7mm)이 적용되었습니다.');
+  } else {
+    page.style.padding = '22mm 20mm';
+    showToast('보통 여백(22mm)이 적용되었습니다.');
+  }
+}
+
+function setWordPageOrientation(mode) {
+  const page = document.getElementById('wordPageEditor');
+  if (mode === 'landscape') {
+    page.style.width = '297mm';
+    page.style.minHeight = '210mm';
+    showToast('가로 용지 방향으로 전환되었습니다.');
+  } else {
+    page.style.width = '210mm';
+    page.style.minHeight = '297mm';
+    showToast('세로 용지 방향으로 전환되었습니다.');
+  }
 }
 
 function insertWordTable() {
@@ -972,6 +1353,11 @@ function insertWordHR() {
   execWordCmd('insertHTML', '<hr style="border:none; border-top:1px solid #cbd5e1; margin:16px 0;" /><p><br></p>');
 }
 
+function insertWordCalloutBox() {
+  const html = `<div style="background:#e8eef7; border-left:4px solid #2b579a; padding:12px 16px; margin:14px 0;"><strong>💡 핵심 요약:</strong> 여기에 강조할 내용을 작성하세요.</div><p><br></p>`;
+  execWordCmd('insertHTML', html);
+}
+
 function loadWordTemplate(type, silent = false) {
   const editor = document.getElementById('wordPageEditor');
   const today = new Date().toISOString().slice(0, 10);
@@ -979,19 +1365,19 @@ function loadWordTemplate(type, silent = false) {
   if (type === 'report') {
     editor.innerHTML = `
       <h1>2026년 프로젝트 추진 기획 및 업무 보고서</h1>
-      <p style="color:#475569;"><strong>작성일자:</strong> ${today} &nbsp;|&nbsp; <strong>작성자:</strong> 기획팀 &nbsp;|&nbsp; <strong>문서등급:</strong> 일반</p>
-      <hr style="border:none; border-top:2px solid #1e3a8a; margin:14px 0 20px;" />
+      <p style="color:#475569;"><strong>작성일자:</strong> ${today} &nbsp;|&nbsp; <strong>작성부서:</strong> 전략기획팀 &nbsp;|&nbsp; <strong>문서등급:</strong> 대외비</p>
+      <hr style="border:none; border-top:2px solid #2b579a; margin:14px 0 20px;" />
 
       <h2>1. 추진 배경 및 목적</h2>
-      <p>상용 MS 오피스 구독 비용을 100% 절감하고, 어느 노트북에서나 웹 주소 접속 즉시 0.1초 만에 엑셀·워드·파워포인트 문서를 편집·저장할 수 있는 초경량 웹 오피스 환경을 구축합니다.</p>
+      <p>상용 MS 365 오피스 정기 구독료를 100% 절감하고, 어느 노트북에서나 익숙한 MS 오피스 리본 UI 그대로 엑셀·워드·파워포인트 문서를 편집·저장할 수 있는 환경을 구축합니다.</p>
 
       <h2>2. 주요 실행 계획 및 비용 비교</h2>
       <table>
         <thead>
           <tr>
             <th>구분</th>
-            <th>기존 방식 (MS 365 구독)</th>
-            <th>신규 도입 (NEWT 웹 오피스)</th>
+            <th>기존 방식 (MS 365 유료 구독)</th>
+            <th>신규 도입 (MS 스타일 웹 오피스)</th>
             <th>절감 효과</th>
           </tr>
         </thead>
@@ -1003,10 +1389,10 @@ function loadWordTemplate(type, silent = false) {
             <td>100% 비용 절감</td>
           </tr>
           <tr>
-            <td><strong>실행 속도</strong></td>
-            <td>무거운 설치 프로그램 구동</td>
-            <td><strong>브라우저 접속 즉시 0.1초 로딩</strong></td>
-            <td>초고속 업무 처리</td>
+            <td><strong>화면 구성</strong></td>
+            <td>MS Office 리본 메뉴</td>
+            <td><strong>동일한 MS Office 리본 UI 적용</strong></td>
+            <td>적응 시간 0초</td>
           </tr>
           <tr>
             <td><strong>호환 파일</strong></td>
@@ -1063,12 +1449,12 @@ function loadWordTemplate(type, silent = false) {
 
   saveWordState();
   updateWordCounters();
-  if (!silent) showToast('문서 양식을 불러왔습니다.');
+  if (!silent) showToast('Word 문서 서식이 적용되었습니다.');
 }
 
 async function importDocxFile(file) {
   if (typeof mammoth === 'undefined') {
-    showToast('DOCX 파서를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+    showToast('DOCX 파서를 불러오는 중입니다. 1초 후 다시 시도해 주세요.');
     return;
   }
   const arrayBuffer = await file.arrayBuffer();
@@ -1102,7 +1488,7 @@ function exportWordDoc() {
   `;
   const blob = new Blob(['\uFEFF', fullWordHtml], { type: 'application/msword;charset=utf-8' });
   triggerBlobDownload(blob, `${title}.doc`);
-  showToast(`'${title}.doc' 다운로드 완료!`);
+  showToast(`'${title}.doc' 저장 완료!`);
 }
 
 function printWordDocument() {
@@ -1110,7 +1496,7 @@ function printWordDocument() {
 }
 
 /* ============================================================================
- * 3. POWERPOINT ENGINE (16:9 Slide Editor + PptxGenJS .pptx Export & Import)
+ * 3. MS POWERPOINT ENGINE
  * ============================================================================ */
 function initPptEngine() {
   const saved = localStorage.getItem(STORAGE_KEYS.PPT_DECK);
@@ -1141,7 +1527,7 @@ function createDefaultTitleSlide() {
         y: 160,
         w: 820,
         h: 90,
-        text: '프레젠테이션 제목을 입력하세요',
+        text: '제목을 추가하려면 클릭하세요',
         fontSize: 42,
         color: '#0f172a',
         bg: 'transparent',
@@ -1155,7 +1541,7 @@ function createDefaultTitleSlide() {
         y: 265,
         w: 750,
         h: 60,
-        text: '부제목 또는 발표자 정보를 여기에 작성합니다',
+        text: '부제목을 추가하려면 클릭하세요',
         fontSize: 20,
         color: '#475569',
         bg: 'transparent',
@@ -1179,12 +1565,12 @@ function loadPptTemplateDeck(templateName, silent = false) {
             type: 'box',
             x: 70,
             y: 120,
-            w: 160,
+            w: 170,
             h: 36,
-            text: '2026 STRATEGY',
+            text: '2026 PRESENTATION',
             fontSize: 13,
             color: '#ffffff',
-            bg: '#c43e1c',
+            bg: '#b7472a',
             bold: true,
             align: 'center'
           },
@@ -1195,7 +1581,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
             y: 180,
             w: 820,
             h: 110,
-            text: 'NEWT Web Office 비즈니스 제안서',
+            text: '비즈니스 전략 및 도입 제안서',
             fontSize: 44,
             color: '#ffffff',
             bg: 'transparent',
@@ -1209,7 +1595,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
             y: 300,
             w: 760,
             h: 70,
-            text: 'MS 오피스 구독 없이 모든 노트북에서 0.1초 만에 실행되는 웹 오피스',
+            text: '익숙한 MS Office 365 리본 인터페이스 기반 초경량 웹 오피스',
             fontSize: 20,
             color: '#94a3b8',
             bg: 'transparent',
@@ -1258,7 +1644,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
             y: 140,
             w: 260,
             h: 300,
-            text: '⚡ 0.1초 즉시 로딩\n\n외부 무거운 설치 없이 웹 주소만 열면 바로 작동합니다.',
+            text: '⚡ 익숙한 리본 UI\n\n실제 MS 오피스와 동일한 홈/삽입/수식 리본 메뉴를 제공합니다.',
             fontSize: 18,
             color: '#1e293b',
             bg: '#eff6ff',
@@ -1309,9 +1695,9 @@ function loadPptTemplateDeck(templateName, silent = false) {
             h: 260,
             rows: [
               ['오피스 모듈', '지원 기능', '출력 파일 포맷'],
-              ['엑셀 (Spreadsheet)', '수식 계산(SUM/AVERAGE), 다중 시트, 셀 서식', '표준 .xlsx / .csv'],
-              ['워드 (Document)', 'A4 페이지 편집, 표/이미지 삽입, 양식 제공', 'MS 호환 .doc / PDF'],
-              ['파워포인트 (Slide)', '16:9 슬라이드 편집, 발표 모드(F5)', '표준 PowerPoint .pptx']
+              ['Excel', '수식 계산(SUM/AVERAGE), 다중 시트, 셀 서식', '표준 .xlsx / .csv'],
+              ['Word', 'A4 페이지 편집, 눈금자, 표/이미지 삽입', 'MS 호환 .doc / PDF'],
+              ['PowerPoint', '16:9 슬라이드 편집, 발표 모드(F5)', '표준 PowerPoint .pptx']
             ],
             fontSize: 16,
             color: '#0f172a',
@@ -1369,7 +1755,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
             y: 130,
             w: 840,
             h: 320,
-            text: '• 핵심 과제 1: 초고속 네이티브 엑셀 스프레드시트 엔진 적용 완료\n\n• 핵심 과제 2: 신규 고객사 제안서 작성 완료',
+            text: '• 핵심 과제 1: MS 오피스 365 정통 리본 UI 적용 완료\n\n• 핵심 과제 2: 신규 고객사 제안서 작성 완료',
             fontSize: 22,
             color: '#1e293b',
             bg: '#f8fafc',
@@ -1385,7 +1771,7 @@ function loadPptTemplateDeck(templateName, silent = false) {
   selectedElementId = null;
   savePptState();
   renderPptWorkspace();
-  if (!silent) showToast('PPT 템플릿을 불러왔습니다.');
+  if (!silent) showToast('PowerPoint 템플릿이 적용되었습니다.');
 }
 
 function savePptState() {
@@ -1397,6 +1783,14 @@ function renderPptWorkspace() {
   renderPptThumbnails();
   renderCurrentSlideStage();
   renderPptInspector();
+
+  if (currentMode === 'ppt') {
+    document.getElementById('statusReadyText').textContent =
+      `슬라이드 ${currentSlideIndex + 1} / ${pptDeck.length}`;
+    document.getElementById('statusContextInfo').textContent = '한국어 (대한민국)';
+    document.getElementById('statusMetricsText').innerHTML =
+      `개체 수: ${pptDeck[currentSlideIndex]?.elements.length || 0}개 &nbsp;&nbsp;&nbsp; 16:9 와이드스크린`;
+  }
 }
 
 function renderPptThumbnails() {
@@ -1405,9 +1799,9 @@ function renderPptThumbnails() {
   listEl.innerHTML = '';
 
   pptDeck.forEach((slide, idx) => {
-    const card = document.createElement('div');
-    card.className = `slide-thumb-card ${idx === currentSlideIndex ? 'active' : ''}`;
-    card.onclick = () => {
+    const row = document.createElement('div');
+    row.className = `slide-thumb-row ${idx === currentSlideIndex ? 'active' : ''}`;
+    row.onclick = () => {
       currentSlideIndex = idx;
       selectedElementId = null;
       renderPptWorkspace();
@@ -1416,18 +1810,15 @@ function renderPptThumbnails() {
     const firstText = slide.elements.find((e) => e.text)?.text || `슬라이드 ${idx + 1}`;
     const isDark = slide.bg === '#0f172a';
 
-    card.innerHTML = `
-      <div class="thumb-header">
-        <span>SLIDE ${idx + 1}</span>
-        <span>${slide.elements.length}개 요소</span>
-      </div>
-      <div class="thumb-preview" style="background:${slide.bg}; color:${isDark ? '#fff' : '#0f172a'};">
+    row.innerHTML = `
+      <span class="slide-num-label">${idx + 1}</span>
+      <div class="slide-thumb-card" style="background:${slide.bg}; color:${isDark ? '#fff' : '#0f172a'};">
         <div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
           ${escapeHtml(firstText.split('\n')[0])}
         </div>
       </div>
     `;
-    listEl.appendChild(card);
+    listEl.appendChild(row);
   });
 }
 
@@ -1438,9 +1829,6 @@ function renderCurrentSlideStage() {
 
   stage.style.background = slide.bg || '#ffffff';
   stage.innerHTML = '';
-
-  const bgSelect = document.getElementById('pptBgThemeSelect');
-  if (bgSelect) bgSelect.value = slide.bg || '#ffffff';
 
   const notesArea = document.getElementById('pptSpeakerNotes');
   if (notesArea) notesArea.value = slide.notes || '';
@@ -1458,7 +1846,7 @@ function renderCurrentSlideStage() {
     item.style.fontWeight = el.bold ? '700' : '400';
     item.style.textAlign = el.align || 'left';
     if (el.type === 'box') {
-      item.style.borderRadius = '10px';
+      item.style.borderRadius = '8px';
       item.style.padding = '16px';
     }
 
@@ -1554,7 +1942,7 @@ function renderPptInspector() {
   const el = slide?.elements.find((item) => item.id === selectedElementId);
 
   if (!el) {
-    body.innerHTML = `<p class="inspector-empty">슬라이드의 텍스트나 도형을 클릭하면 크기·색상·정렬을 조절할 수 있습니다.</p>`;
+    body.innerHTML = `<p class="inspector-empty">슬라이드의 텍스트나 도형을 클릭하면 크기·색상·정렬을 정밀하게 편집할 수 있습니다.</p>`;
     return;
   }
 
@@ -1594,16 +1982,16 @@ function renderPptInspector() {
     <div class="prop-grid-2">
       <div class="prop-row">
         <label>글자 색상</label>
-        <input type="color" value="${el.color || '#0f172a'}" onchange="updateSelectedPptProp('color', this.value)" style="height:32px;" />
+        <input type="color" value="${el.color || '#0f172a'}" onchange="updateSelectedPptProp('color', this.value)" style="height:30px;" />
       </div>
       <div class="prop-row">
-        <label>배경 색상</label>
-        <input type="color" value="${el.bg && el.bg !== 'transparent' ? el.bg : '#ffffff'}" onchange="updateSelectedPptProp('bg', this.value)" style="height:32px;" />
+        <label>도형 채우기</label>
+        <input type="color" value="${el.bg && el.bg !== 'transparent' ? el.bg : '#ffffff'}" onchange="updateSelectedPptProp('bg', this.value)" style="height:30px;" />
       </div>
     </div>
-    <div style="display:flex; gap:8px; margin-top:8px;">
-      <button class="tool-btn" style="flex:1;" onclick="updateSelectedPptProp('bold', !${Boolean(el.bold)})"><b>B</b> 굵게</button>
-      <button class="tool-btn danger-hover" style="flex:1;" onclick="deleteSelectedPptElement()">🗑️ 삭제</button>
+    <div style="display:flex; gap:6px; margin-top:8px;">
+      <button class="r-wide-btn" style="flex:1;" onclick="toggleSelectedPptBold()"><b>가</b> 굵게</button>
+      <button class="r-wide-btn" style="flex:1;color:#a4262c;" onclick="deleteSelectedPptElement()">🗑️ 삭제</button>
     </div>
   `;
 }
@@ -1613,6 +2001,26 @@ function updateSelectedPptProp(key, val) {
   const el = slide?.elements.find((item) => item.id === selectedElementId);
   if (!el) return;
   el[key] = val;
+  savePptState();
+  renderCurrentSlideStage();
+  renderPptInspector();
+}
+
+function nudgeSelectedPptFontSize(delta) {
+  const slide = pptDeck[currentSlideIndex];
+  const el = slide?.elements.find((item) => item.id === selectedElementId);
+  if (!el) return;
+  el.fontSize = Math.max(10, (el.fontSize || 20) + delta);
+  savePptState();
+  renderCurrentSlideStage();
+  renderPptInspector();
+}
+
+function toggleSelectedPptBold() {
+  const slide = pptDeck[currentSlideIndex];
+  const el = slide?.elements.find((item) => item.id === selectedElementId);
+  if (!el) return;
+  el.bold = !el.bold;
   savePptState();
   renderCurrentSlideStage();
   renderPptInspector();
@@ -1704,7 +2112,7 @@ function addPptElement(type) {
       y: 150,
       w: 500,
       h: 70,
-      text: '새 텍스트 상자',
+      text: '텍스트를 입력하세요',
       fontSize: 24,
       color: slide.bg === '#0f172a' ? '#ffffff' : '#0f172a',
       bg: 'transparent',
@@ -1719,7 +2127,7 @@ function addPptElement(type) {
       y: 160,
       w: 320,
       h: 180,
-      text: '강조 카드 / 도형 블록',
+      text: '도형 / 카드 텍스트',
       fontSize: 20,
       color: '#0f172a',
       bg: '#eff6ff',
@@ -1841,7 +2249,7 @@ function renderPresentationSlide() {
     item.style.fontWeight = el.bold ? '700' : '400';
     item.style.textAlign = el.align || 'left';
     if (el.type === 'box') {
-      item.style.borderRadius = '10px';
+      item.style.borderRadius = '8px';
       item.style.padding = '16px';
     }
     if (el.type === 'text' || el.type === 'box') {
@@ -1925,7 +2333,7 @@ function exportPptxFile() {
 
   const fileName = `${getCleanDocTitle()}.pptx`;
   pptx.writeFile({ fileName }).then(() => {
-    showToast(`'${fileName}' 다운로드 완료!`);
+    showToast(`'${fileName}' 저장 완료!`);
   });
 }
 
