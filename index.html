@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Microsoft 365 스타일 웹 오피스 — Excel · Word · PowerPoint</title>
+  <title>Microsoft 365 스타일 웹 오피스 — Excel (400+ 함수 지원) · Word · PowerPoint</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="theme-excel">
 
   <!-- ==================== 1. MS OFFICE TITLE BAR ==================== -->
   <header class="ms-titlebar">
-    <!-- Left: App Launcher (Waffle) + Quick Access Toolbar -->
     <div class="titlebar-left">
       <button class="waffle-btn" onclick="toggleWaffleMenu(event)" title="오피스 앱 전환기 (Excel · Word · PowerPoint)">
         <span class="waffle-grid">
@@ -37,7 +36,6 @@
       </div>
     </div>
 
-    <!-- Center: Document Title & Search Box -->
     <div class="titlebar-center">
       <div class="doc-title-wrapper">
         <input type="text" id="docTitleInput" class="ms-doc-title" value="2026_월간예산_가계부" title="클릭하여 파일 이름 변경" />
@@ -46,7 +44,6 @@
       </div>
     </div>
 
-    <!-- Right: Direct App Switcher & Share/Download -->
     <div class="titlebar-right">
       <div class="direct-app-switcher">
         <button class="app-switch-chip active" data-mode="excel" onclick="switchOfficeMode('excel')">
@@ -74,7 +71,7 @@
         <div class="waffle-icon excel-bg">X</div>
         <div class="waffle-meta">
           <strong>Excel</strong>
-          <span>스프레드시트 (.xlsx)</span>
+          <span>스프레드시트 (.xlsx · 400+ 함수)</span>
         </div>
       </button>
       <button class="waffle-item" onclick="switchOfficeMode('word'); closeWaffleMenu();">
@@ -103,22 +100,21 @@
 
   <!-- ==================== 2. MS OFFICE RIBBON MENU BAR ==================== -->
   <section class="ms-ribbon-shell">
-    <!-- Ribbon Tab Strip (파일 / 홈 / 삽입 / 레이아웃 / 수식·슬라이드쇼 / 샘플양식) -->
     <div class="ribbon-tab-strip">
       <button class="ribbon-file-tab" onclick="openFileBackstage()">파일</button>
       <button class="ribbon-tab active" data-rtab="home" onclick="switchRibbonTab('home')">홈</button>
       <button class="ribbon-tab" data-rtab="insert" onclick="switchRibbonTab('insert')">삽입</button>
       <button class="ribbon-tab" data-rtab="layout" onclick="switchRibbonTab('layout')" id="layoutTabLabel">페이지 레이아웃</button>
-      <button class="ribbon-tab" data-rtab="special" onclick="switchRibbonTab('special')" id="specialTabLabel">수식 및 데이터</button>
+      <button class="ribbon-tab" data-rtab="special" onclick="switchRibbonTab('special')" id="specialTabLabel">수식 (400+ 함수)</button>
       <button class="ribbon-tab" data-rtab="templates" onclick="switchRibbonTab('templates')">✨ 실무 양식 모음</button>
 
       <div class="ribbon-right-actions">
+        <span id="formulaEngineBadge" class="engine-status-pill" title="오리지널 엑셀 호환 수식 엔진 작동 중">⚡ 400+ 엑셀 함수 엔진 활성</span>
         <button class="ribbon-quick-btn" onclick="triggerGlobalFileOpen()">📂 파일 열기</button>
         <button class="ribbon-quick-btn" onclick="createNewDocument()">📄 새 문서</button>
       </div>
     </div>
 
-    <!-- Ribbon Deck (Changes based on Current App + Active Ribbon Tab) -->
     <div class="ribbon-deck" id="ribbonDeck">
 
       <!-- ==================== [EXCEL RIBBON PANELS] ==================== -->
@@ -234,15 +230,19 @@
             <div class="r-group-title">셀</div>
           </div>
 
-          <!-- 편집 -->
+          <!-- 편집 및 함수 -->
           <div class="r-group">
             <div class="r-controls">
+              <button class="r-big-btn" onclick="openFunctionWizardModal()" title="400+ 엑셀 함수 마법사 열기">
+                <span class="r-big-icon" style="color:#217346;font-weight:900;font-style:italic;font-family:Georgia,serif;">fx</span>
+                <span>함수 삽입</span>
+              </button>
               <button class="r-big-btn" onclick="insertExcelFunction('SUM')" title="위쪽 숫자 자동 합계">
                 <span class="r-big-icon" style="color:#217346;font-weight:900;">Σ</span>
                 <span>자동 합계</span>
               </button>
               <div class="r-stack">
-                <button class="r-small-row-btn" onclick="insertExcelFunction('AVERAGE')">평균 (AVERAGE)</button>
+                <button class="r-small-row-btn" onclick="loadExcelSample('formulas')">🧪 종합 함수 데모 시트</button>
                 <button class="r-small-row-btn" onclick="sortExcelColumn('asc')">🔼 오름차순 정렬</button>
               </div>
               <button class="r-big-btn highlight-save-big" onclick="exportExcelXLSX()">
@@ -250,7 +250,7 @@
                 <span>.xlsx 저장</span>
               </button>
             </div>
-            <div class="r-group-title">편집 및 저장</div>
+            <div class="r-group-title">함수 및 편집</div>
           </div>
         </div>
 
@@ -301,49 +301,64 @@
           </div>
         </div>
 
-        <!-- EXCEL > FORMULAS TAB -->
+        <!-- EXCEL > FORMULAS TAB (수식 라이브러리) -->
         <div class="ribbon-panel" data-rpanel="special">
           <div class="r-group">
             <div class="r-controls">
+              <button class="r-big-btn highlight-save-big" onclick="openFunctionWizardModal('ALL')">
+                <span class="r-big-icon" style="font-family:Georgia,serif;font-style:italic;font-weight:900;">fx</span>
+                <span>함수 삽입</span>
+              </button>
               <button class="r-big-btn" onclick="insertExcelFunction('SUM')">
                 <span class="r-big-icon">Σ</span>
-                <span>SUM 합계</span>
-              </button>
-              <button class="r-big-btn" onclick="insertExcelFunction('AVERAGE')">
-                <span class="r-big-icon">x̄</span>
-                <span>AVERAGE 평균</span>
-              </button>
-              <button class="r-big-btn" onclick="insertExcelFunction('MAX')">
-                <span class="r-big-icon">▲</span>
-                <span>MAX 최대값</span>
-              </button>
-              <button class="r-big-btn" onclick="insertExcelFunction('MIN')">
-                <span class="r-big-icon">▼</span>
-                <span>MIN 최소값</span>
-              </button>
-              <button class="r-big-btn" onclick="insertExcelFunction('COUNT')">
-                <span class="r-big-icon">#</span>
-                <span>COUNT 개수</span>
+                <span>자동 합계</span>
               </button>
             </div>
-            <div class="r-group-title">함수 라이브러리</div>
+            <div class="r-group-title">함수 마법사</div>
           </div>
+
           <div class="r-group">
             <div class="r-controls">
-              <button class="r-big-btn" onclick="sortExcelColumn('asc')">
-                <span class="r-big-icon">🔼</span>
-                <span>정렬 (ㄱ→ㅎ)</span>
+              <button class="r-big-btn" onclick="openFunctionWizardModal('LOGIC')">
+                <span class="r-big-icon">⚖️</span>
+                <span>논리 (IF/IFS)</span>
               </button>
-              <button class="r-big-btn" onclick="sortExcelColumn('desc')">
-                <span class="r-big-icon">🔽</span>
-                <span>정렬 (ㅎ→ㄱ)</span>
+              <button class="r-big-btn" onclick="openFunctionWizardModal('LOOKUP')">
+                <span class="r-big-icon">🔍</span>
+                <span>찾기/참조 (VLOOKUP)</span>
               </button>
-              <button class="r-big-btn" onclick="exportExcelCSV()">
-                <span class="r-big-icon">📄</span>
-                <span>CSV 내보내기</span>
+              <button class="r-big-btn" onclick="openFunctionWizardModal('MATH')">
+                <span class="r-big-icon">🧮</span>
+                <span>수학/삼각 (SUMIF)</span>
+              </button>
+              <button class="r-big-btn" onclick="openFunctionWizardModal('STAT')">
+                <span class="r-big-icon">📈</span>
+                <span>통계 (COUNTIF)</span>
+              </button>
+              <button class="r-big-btn" onclick="openFunctionWizardModal('TEXT')">
+                <span class="r-big-icon">🔤</span>
+                <span>텍스트 (LEFT/MID)</span>
+              </button>
+              <button class="r-big-btn" onclick="openFunctionWizardModal('DATE')">
+                <span class="r-big-icon">📅</span>
+                <span>날짜/시간 (TODAY)</span>
+              </button>
+              <button class="r-big-btn" onclick="openFunctionWizardModal('FINANCE')">
+                <span class="r-big-icon">💰</span>
+                <span>재무 (PMT/NPV)</span>
               </button>
             </div>
-            <div class="r-group-title">데이터 도구</div>
+            <div class="r-group-title">함수 라이브러리 (카테고리별 400+ 함수)</div>
+          </div>
+
+          <div class="r-group">
+            <div class="r-controls">
+              <button class="r-big-btn" onclick="loadExcelSample('formulas')">
+                <span class="r-big-icon">🧪</span>
+                <span>실무 함수 데모</span>
+              </button>
+            </div>
+            <div class="r-group-title">예제 시트</div>
           </div>
         </div>
 
@@ -354,7 +369,6 @@
 
         <!-- WORD > HOME TAB -->
         <div class="ribbon-panel active" data-rpanel="home">
-          <!-- 클립보드 -->
           <div class="r-group">
             <div class="r-controls">
               <button class="r-big-btn" onclick="execWordCmd('paste')">
@@ -369,7 +383,6 @@
             <div class="r-group-title">클립보드</div>
           </div>
 
-          <!-- 글꼴 -->
           <div class="r-group">
             <div class="r-controls-col">
               <div class="r-row">
@@ -410,7 +423,6 @@
             <div class="r-group-title">글꼴</div>
           </div>
 
-          <!-- 단락 -->
           <div class="r-group">
             <div class="r-controls-col">
               <div class="r-row">
@@ -430,7 +442,6 @@
             <div class="r-group-title">단락</div>
           </div>
 
-          <!-- 스타일 -->
           <div class="r-group">
             <div class="r-controls">
               <button class="word-style-gallery-btn" onclick="execWordCmd('formatBlock', 'P')">
@@ -449,7 +460,6 @@
             <div class="r-group-title">스타일</div>
           </div>
 
-          <!-- 저장 및 출력 -->
           <div class="r-group">
             <div class="r-controls">
               <button class="r-big-btn" onclick="printWordDocument()">
@@ -539,7 +549,6 @@
 
         <!-- PPT > HOME TAB -->
         <div class="ribbon-panel active" data-rpanel="home">
-          <!-- 슬라이드 -->
           <div class="r-group">
             <div class="r-controls">
               <button class="r-big-btn" onclick="addPptSlide()">
@@ -554,7 +563,6 @@
             <div class="r-group-title">슬라이드</div>
           </div>
 
-          <!-- 글꼴 (선택한 PPT 요소) -->
           <div class="r-group">
             <div class="r-controls-col">
               <div class="r-row">
@@ -581,7 +589,6 @@
             <div class="r-group-title">글꼴 및 도형 스타일</div>
           </div>
 
-          <!-- 그리기 / 삽입 -->
           <div class="r-group">
             <div class="r-controls">
               <button class="r-big-btn" onclick="addPptElement('text')">
@@ -604,7 +611,6 @@
             <div class="r-group-title">개체 삽입</div>
           </div>
 
-          <!-- 발표 및 저장 -->
           <div class="r-group">
             <div class="r-controls">
               <button class="r-big-btn" onclick="startSlideShow()">
@@ -649,7 +655,7 @@
           </div>
         </div>
 
-        <!-- PPT > DESIGN (LAYOUT) TAB -->
+        <!-- PPT > DESIGN TAB -->
         <div class="ribbon-panel" data-rpanel="layout">
           <div class="r-group">
             <div class="r-controls">
@@ -664,7 +670,7 @@
           </div>
         </div>
 
-        <!-- PPT > SLIDESHOW (SPECIAL) TAB -->
+        <!-- PPT > SLIDESHOW TAB -->
         <div class="ribbon-panel" data-rpanel="special">
           <div class="r-group">
             <div class="r-controls">
@@ -690,6 +696,10 @@
             <button class="r-big-btn" onclick="switchOfficeMode('excel'); loadExcelSample('budget'); switchRibbonTab('home');">
               <span class="r-big-icon">📊</span>
               <span>월간 가계부</span>
+            </button>
+            <button class="r-big-btn" onclick="switchOfficeMode('excel'); loadExcelSample('formulas'); switchRibbonTab('home');">
+              <span class="r-big-icon">🧪</span>
+              <span>종합 함수 데모</span>
             </button>
             <button class="r-big-btn" onclick="switchOfficeMode('excel'); loadExcelSample('invoice'); switchRibbonTab('home');">
               <span class="r-big-icon">🧾</span>
@@ -751,14 +761,19 @@
         <div class="fx-btn-cluster">
           <button class="fx-action-btn cancel" onclick="cancelFormulaBarEdit()" title="취소 (Esc)">✕</button>
           <button class="fx-action-btn confirm" onclick="confirmFormulaBarEdit()" title="입력 (Enter)">✓</button>
-          <span class="fx-symbol" title="함수 삽입"><i>fx</i></span>
+          <button class="fx-symbol-btn" onclick="openFunctionWizardModal()" title="함수 마법사 열기 (400+ 엑셀 함수)"><i>fx</i></button>
         </div>
-        <input
-          type="text"
-          id="excelFormulaInput"
-          class="formula-input"
-          placeholder="값 또는 수식 입력 (예: =SUM(C2:C7), =C2-D2, =AVERAGE(C2:C7))"
-        />
+        <div class="formula-input-host">
+          <input
+            type="text"
+            id="excelFormulaInput"
+            class="formula-input"
+            autocomplete="off"
+            placeholder="값 또는 수식 입력 (예: =VLOOKUP(A2,A2:E7,4,0), =SUMIF(A2:A7,&quot;고정지출&quot;,D2:D7), =IF(D2>C2,&quot;초과&quot;,&quot;정상&quot;))"
+          />
+          <!-- Formula Autocomplete Dropdown -->
+          <div id="formulaAutocompletePopup" class="formula-autocomplete hidden"></div>
+        </div>
       </div>
 
       <!-- Native Spreadsheet Scroll Grid -->
@@ -779,7 +794,6 @@
 
     <!-- ==================== VIEW 2: MS WORD ==================== -->
     <section id="view-word" class="office-view">
-      <!-- Authentic Word Horizontal Ruler -->
       <div class="word-ruler-bar">
         <div class="word-ruler-track">
           <span class="ruler-margin-left"></span>
@@ -796,10 +810,8 @@
     <!-- ==================== VIEW 3: MS POWERPOINT ==================== -->
     <section id="view-ppt" class="office-view">
       <div class="ppt-workbench">
-        <!-- Left Slide Thumbnails (PowerPoint Style) -->
         <aside class="ppt-sidebar" id="pptThumbnailList"></aside>
 
-        <!-- Center Stage + Bottom Speaker Notes -->
         <div class="ppt-center-column">
           <div class="ppt-stage-wrapper" onclick="deselectPptElement(event)">
             <div id="pptSlideStage" class="ppt-slide-stage"></div>
@@ -815,7 +827,6 @@
           </div>
         </div>
 
-        <!-- Right Format Shape Task Pane -->
         <aside class="ppt-inspector">
           <div class="inspector-header">
             <h3 class="inspector-title">도형 서식</h3>
@@ -856,7 +867,42 @@
     </div>
   </footer>
 
-  <!-- ==================== 5. FILE BACKSTAGE MODAL ("파일" 탭) ==================== -->
+  <!-- ==================== 5. EXCEL FUNCTION WIZARD MODAL (fx 함수 마법사) ==================== -->
+  <div id="functionWizardModal" class="backstage-modal hidden" onclick="if(event.target===this) closeFunctionWizardModal();">
+    <div class="fx-wizard-dialog">
+      <div class="fx-wizard-header">
+        <div>
+          <h3><i>fx</i> 함수 마법사 (오리지널 Excel 400+ 호환 함수)</h3>
+          <p>함수를 검색하거나 범주를 선택한 뒤 클릭하면 현재 선택된 셀에 즉시 입력됩니다.</p>
+        </div>
+        <button class="fx-wizard-close" onclick="closeFunctionWizardModal()">✕</button>
+      </div>
+
+      <div class="fx-wizard-controls">
+        <input
+          type="text"
+          id="fxSearchInput"
+          placeholder="함수 이름 또는 설명 검색 (예: VLOOKUP, SUMIF, 조건, 반올림, 텍스트, 대출...)"
+          oninput="renderFunctionWizardList()"
+        />
+        <select id="fxCategorySelect" onchange="renderFunctionWizardList()">
+          <option value="ALL">모든 범주 (전체 함수)</option>
+          <option value="MATH">수학/삼각 (SUM, SUMIF, SUMIFS, ROUND, SUBTOTAL...)</option>
+          <option value="STAT">통계 (AVERAGE, COUNTIF, COUNTIFS, MEDIAN, RANK...)</option>
+          <option value="LOGIC">논리 (IF, IFS, AND, OR, IFERROR, SWITCH...)</option>
+          <option value="LOOKUP">찾기/참조 (VLOOKUP, HLOOKUP, XLOOKUP, INDEX, MATCH...)</option>
+          <option value="TEXT">텍스트 (LEFT, RIGHT, MID, LEN, CONCAT, SUBSTITUTE, TEXT...)</option>
+          <option value="DATE">날짜/시간 (TODAY, NOW, DATE, YEAR, DATEDIF, EOMONTH, NETWORKDAYS...)</option>
+          <option value="FINANCE">재무 (PMT, PV, FV, NPV, IRR, RATE...)</option>
+          <option value="INFO">정보/공학 (ISBLANK, ISNUMBER, ISERROR,ISTEXT...)</option>
+        </select>
+      </div>
+
+      <div id="fxWizardList" class="fx-wizard-list"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 6. FILE BACKSTAGE MODAL ("파일" 탭) ==================== -->
   <div id="fileBackstageModal" class="backstage-modal hidden" onclick="if(event.target===this) closeFileBackstage();">
     <div class="backstage-dialog">
       <aside class="backstage-nav">
@@ -886,6 +932,14 @@
             <div>
               <strong>현재 문서 PC로 다운로드</strong>
               <p>작업 중인 문서를 표준 오피스 포맷으로 즉시 저장</p>
+            </div>
+          </div>
+
+          <div class="bs-card" onclick="switchOfficeMode('excel'); loadExcelSample('formulas'); closeFileBackstage();">
+            <div class="bs-card-icon excel-text">🧪</div>
+            <div>
+              <strong>Excel 실무 함수 종합 데모 (VLOOKUP / SUMIF / IF)</strong>
+              <p>오리지널 엑셀 핵심 함수가 작동하는 시트 열기</p>
             </div>
           </div>
 
@@ -934,7 +988,8 @@
   <!-- Main Instant App Script -->
   <script src="app.js"></script>
 
-  <!-- Non-blocking Background Parsers for .xlsx / .docx / .pptx -->
+  <!-- Non-blocking Background Engines: HyperFormula (400+ Excel Functions) + File Parsers -->
+  <script defer src="https://cdn.jsdelivr.net/npm/hyperformula@2.6.2/dist/hyperformula.full.min.js" onload="onHyperFormulaLoaded()"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
